@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches de testes
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ambientes virtuais
+venv/
+.venv/
+env/
+ENV/
+src/venv/
+
+# Arquivos de IDEs e editores
+.vscode/
+.idea/
+*.swp
+*~
+
+# Pastas e arquivos específicos do projeto
+docs/
+.agents/
