@@ -4,7 +4,8 @@ de cada cadeia de teste com o esperado (tests/casos_teste.py).
 
 Pré-requisitos: Java (JDK) e o arquivo JFLAP7.1.jar (https://www.jflap.org).
 Uso (na raiz do repositório):
-  python scripts/verificar_jflap.py caminho/para/JFLAP7.1.jar
+  python scripts/verificar_jflap.py [caminho/para/JFLAP7.1.jar]
+(sem argumento, usa scripts/jflap/JFLAP7.1.jar)
 
 Gera automatos/jflap/resultado_jflap.md com a tabela de resultados.
 """
@@ -34,9 +35,12 @@ def executavel(nome: str) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or not Path(sys.argv[1]).is_file():
-        sys.exit("Uso: python scripts/verificar_jflap.py caminho/para/JFLAP7.1.jar")
-    jar = str(Path(sys.argv[1]).resolve())
+    jar_padrao = RAIZ / "scripts" / "jflap" / "JFLAP7.1.jar"
+    jar = Path(sys.argv[1]) if len(sys.argv) > 1 else jar_padrao
+    if not jar.is_file():
+        sys.exit("Uso: python scripts/verificar_jflap.py [caminho/para/JFLAP7.1.jar]\n"
+                 f"(sem argumento, procura {jar_padrao.relative_to(RAIZ)})")
+    jar = str(jar.resolve())
     separador = ";" if sys.platform == "win32" else ":"
 
     with tempfile.TemporaryDirectory() as pasta:

@@ -1,6 +1,5 @@
 """
-Exportação e importação de AFNε no formato do JFLAP 7.1 (.jff) e geração de
-diagramas no formato DOT (Graphviz).
+Exportação e importação de AFNε no formato do JFLAP 7.1 (.jff).
 
 No arquivo .jff cada rótulo de classe é expandido em UMA transição por
 símbolo (ex.: [0-9] vira 10 transições), porque o JFLAP só lê um símbolo por
@@ -15,7 +14,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from afn import EPSILON, AFNe
-from construtor_afn import formatar_conjunto
 
 
 def salvar_jff(afn: AFNe, caminho: str | Path, posicoes: dict[int, tuple[float, float]] | None = None) -> Path:
@@ -81,31 +79,3 @@ def carregar_jff(caminho: str | Path) -> AFNe:
         afn.adicionar_transicao(origem, frozenset(simbolos), destino)
     return afn
 
-
-def gerar_dot(afn: AFNe, titulo: str = "") -> str:
-    """Diagrama legível do AFNε em DOT: rótulos de classe agrupados ([0-9]),
-    movimentos ε tracejados em vermelho, estados finais com círculo duplo."""
-    def aspas(texto: str) -> str:
-        return '"' + texto.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-    linhas = [
-        f"digraph {aspas(afn.nome or 'AFN')} {{",
-        "  rankdir=LR;",
-        '  graph [fontname="Helvetica", fontsize=16, nodesep=0.22, ranksep=0.32, pad=0.3, '
-        'labelloc=t, bgcolor="white"' + (f", label={aspas(titulo)}" if titulo else "") + "];",
-        '  node [shape=circle, fontname="Helvetica", fontsize=11, width=0.46, fixedsize=true, '
-        'style=filled, fillcolor="#f3f6fb", color="#1f3a5f", penwidth=1.2];',
-        '  edge [fontname="Helvetica", fontsize=12, color="#1f3a5f", fontcolor="#13263d", arrowsize=0.7];',
-        '  inicio [shape=none, label="início", width=0.6, fontsize=11, fontcolor="#1f3a5f", style=""];',
-        f"  inicio -> q{afn.inicial} [penwidth=1.6];",
-    ]
-    for estado in sorted(afn.finais):
-        linhas.append(f'  q{estado} [shape=doublecircle, fillcolor="#dff2e6", color="#1d6b3f", width=0.5];')
-    for origem, rotulo, destino in afn.transicoes:
-        if rotulo is EPSILON:
-            atributos = 'label="ε", style=dashed, color="#c0392b", fontcolor="#c0392b"'
-        else:
-            atributos = f"label={aspas(formatar_conjunto(rotulo))}"
-        linhas.append(f"  q{origem} -> q{destino} [{atributos}];")
-    linhas.append("}")
-    return "\n".join(linhas) + "\n"

@@ -28,3 +28,6 @@ src/venv/
 relatorio*.json
 relatorio*.csv
 relatorio*.txt
+
+# JFLAP (baixar em https://www.jflap.org e colocar em scripts/jflap/)
+scripts/jflap/*.jar

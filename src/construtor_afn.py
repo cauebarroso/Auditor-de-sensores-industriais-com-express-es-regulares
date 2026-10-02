@@ -295,19 +295,24 @@ def formatar_conjunto(conjunto) -> str:
         return "ε"
     if len(conjunto) == 1:
         return formatar_simbolo(next(iter(conjunto)))
-    # O hífen literal fica no final da classe para não ser lido como intervalo
-    simbolos = sorted(s for s in conjunto if s != "-")
+    # Ordem usual das classes: A-Z, a-z, 0-9, demais símbolos e, por último,
+    # o hífen literal (no final ele não é lido como intervalo)
+    grupos = ([s for s in conjunto if "A" <= s <= "Z"], [s for s in conjunto if "a" <= s <= "z"],
+              [s for s in conjunto if "0" <= s <= "9"],
+              [s for s in conjunto if not s.isascii() or not (s.isalnum() or s == "-")])
     texto = ""
-    i = 0
-    while i < len(simbolos):
-        j = i
-        while j + 1 < len(simbolos) and ord(simbolos[j + 1]) == ord(simbolos[j]) + 1:
-            j += 1
-        if j - i >= 2:
-            texto += f"{simbolos[i]}-{simbolos[j]}"
-        else:
-            texto += "".join(formatar_simbolo(s) for s in simbolos[i:j + 1])
-        i = j + 1
+    for grupo in grupos:
+        simbolos = sorted(grupo)
+        i = 0
+        while i < len(simbolos):
+            j = i
+            while j + 1 < len(simbolos) and ord(simbolos[j + 1]) == ord(simbolos[j]) + 1:
+                j += 1
+            if j - i >= 2:
+                texto += f"{simbolos[i]}-{simbolos[j]}"
+            else:
+                texto += "".join(formatar_simbolo(s) for s in simbolos[i:j + 1])
+            i = j + 1
     if "-" in conjunto:
         texto += "-"
     return f"[{texto}]"
