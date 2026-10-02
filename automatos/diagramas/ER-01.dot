@@ -1,0 +1,29 @@
+digraph "ER-01" {
+  rankdir=LR;
+  graph [fontname="Helvetica", fontsize=16, nodesep=0.22, ranksep=0.32, pad=0.3, labelloc=t, bgcolor="white", label="ER-01 — ID do Dispositivo   |   AFNε: 19 estados, 20 transições (5 movimentos ε)"];
+  node [shape=circle, fontname="Helvetica", fontsize=11, width=0.46, fixedsize=true, style=filled, fillcolor="#f3f6fb", color="#1f3a5f", penwidth=1.2];
+  edge [fontname="Helvetica", fontsize=12, color="#1f3a5f", fontcolor="#13263d", arrowsize=0.7];
+  inicio [shape=none, label="início", width=0.6, fontsize=11, fontcolor="#1f3a5f", style=""];
+  inicio -> q0 [penwidth=1.6];
+  q18 [shape=doublecircle, fillcolor="#dff2e6", color="#1d6b3f", width=0.5];
+  q0 -> q1 [label="ε", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  q0 -> q2 [label="ε", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  q1 -> q3 [label="S"];
+  q2 -> q4 [label="A"];
+  q3 -> q5 [label="E"];
+  q4 -> q6 [label="T"];
+  q5 -> q7 [label="N"];
+  q6 -> q8 [label="U"];
+  q7 -> q9 [label="ε", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  q8 -> q9 [label="ε", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  q9 -> q10 [label="-"];
+  q10 -> q11 [label="[A-Z]"];
+  q11 -> q12 [label="[A-Z]"];
+  q12 -> q13 [label="[A-Z]"];
+  q12 -> q13 [label="ε", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  q13 -> q14 [label="-"];
+  q14 -> q15 [label="[0-9]"];
+  q15 -> q16 [label="[0-9]"];
+  q16 -> q17 [label="[0-9]"];
+  q17 -> q18 [label="[0-9]"];
+}

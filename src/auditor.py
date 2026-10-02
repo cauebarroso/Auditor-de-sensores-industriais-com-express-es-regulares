@@ -1,348 +1,330 @@
-import re
+"""
+Auditor Léxico de Telemetria de Sensores Industriais.
+
+Ferramenta de linha de comando que funciona como um "firewall léxico":
+cada pacote de texto recebido de sensores/atuadores é validado contra cinco
+Expressões Regulares; pacotes corrompidos são bloqueados e diagnosticados.
+
+Uso:
+  python src/auditor.py                         menu interativo
+  python src/auditor.py ARQUIVO                 audita um arquivo (lote)
+  python src/auditor.py ARQUIVO --exportar R    ... e salva o relatório (.json/.csv/.txt)
+  python src/auditor.py --pacote "P1" "P2"      valida pacotes avulsos
+  python src/auditor.py --explicar "P"          simula o AFNε passo a passo
+  python src/auditor.py --expressoes            mostra as cinco ERs
+"""
+
+from __future__ import annotations
+
+import argparse
 import sys
 
-# Garante compatibilidade de encoding em terminais Windows (cp1252 / cmd / powershell)
-if hasattr(sys.stdout, "reconfigure"):
+from construtor_afn import formatar_simbolo
+from diagnostico import AUTOMATOS, diagnosticar, identificar_intencao, localizar_erro
+from expressoes import EXPRESSOES, POR_CODIGO, classificar
+from relatorio import CATEGORIAS, Pacote, analisar_pacote, exportar, formatar_relatorio, ler_pacotes
+
+# Garante acentos e símbolos (ε, Σ, ⎵) em terminais Windows (cp1252 / cmd / PowerShell)
+for _fluxo in (sys.stdout, sys.stderr):
+    if hasattr(_fluxo, "reconfigure"):
+        try:
+            _fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+LARGURA = 64
+
+
+def caixa(*linhas: str) -> str:
+    borda = "+" + "=" * LARGURA + "+"
+    return "\n".join([borda, *(f"|{linha:^{LARGURA}}|" for linha in linhas), borda])
+
+
+def ler(prompt: str) -> str | None:
+    """input() que devolve None em Ctrl+C / Ctrl+D em vez de encerrar com erro."""
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-if hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
-# =============================================================================
-# Expressões Regulares - Auditor Léxico
-# Proibido o uso de \d, \w, \s e recursos não regulares.
-# =============================================================================
-
-ER_01_ID = re.compile(r"(SEN|ATU)-[A-Z]{2,3}-[0-9]{4}")
-
-ER_02_TELEMETRIA = re.compile(
-    r"SEN-[A-Z]{2,3}-[0-9]{4}:(TEMP=-?(1[0-9][0-9]|[1-9]?[0-9])(\.[0-9])?C|UMID=(100(\.0)?|[1-9]?[0-9](\.[0-9])?)%|PRES=(8[5-9][0-9]|9[0-9][0-9]|10[0-9][0-9])hPa)"
-)
-
-ER_03_COMANDO = re.compile(
-    r"CMD ATU-[A-Z]{2,3}-[0-9]{4} (LIGAR|DESLIGAR|ABRIR|FECHAR|AJUSTAR (100|[1-9]?[0-9])%)"
-)
-
-ER_04_IPV4_CIDR = re.compile(
-    r"((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(/(3[0-2]|[12]?[0-9]))?"
-)
-
-ER_05_ALERTA_LOG = re.compile(
-    r"[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] \[(INFO|WARN|ERROR|CRIT)\] (SEN|ATU)-[A-Z]{2,3}-[0-9]{4}: [A-Za-z0-9 _.-]{1,60}"
-)
-
-# =============================================================================
-# Motor de Diagnóstico Específico de Erros Léxicos (AC-2)
-# Identifica a intenção morfológica e aponta exatamente a regra violada.
-# =============================================================================
-
-def diagnosticar_falha(pacote: str) -> str:
-    """Identifica especificamente a causa da falha léxica do pacote."""
-    # 1. Intenção: Log (ER-05) - possui timestamp ISO ou severidade entre colchetes
-    if re.search(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T", pacote) or re.search(r"\[[A-Za-z]+\]", pacote):
-        if re.search(r"^[0-9]{4}-(1[3-9]|[2-9][0-9])-", pacote):
-            return "Falha no Log: mes invalido (superior a 12). Meses aceitos: 01 a 12."
-        if re.search(r"^[0-9]{4}-(0[1-9]|1[0-2])-(3[2-9]|[4-9][0-9])", pacote):
-            return "Falha no Log: dia invalido (superior a 31). Dias aceitos: 01 a 31."
-        if re.search(r"^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T(2[4-9]|[3-9][0-9])", pacote):
-            return "Falha no Log: hora invalida (superior a 23). Horas aceitas: 00 a 23."
-        if re.search(r"\[[A-Za-z]+\]", pacote) and not re.search(r"\[(INFO|WARN|ERROR|CRIT)\]", pacote):
-            return "Falha no Log: nivel de severidade nao reconhecido. Niveis validos: INFO, WARN, ERROR, CRIT."
-        if re.search(r":\s*$", pacote):
-            return "Falha no Log: mensagem descritiva ausente apos o identificador do dispositivo."
-        return "Falha no Log: formatacao do registro incompativel com o padrao ISO 8601 ou campos obrigatorios."
-
-    # 2. Intenção: Comando de Controle (ER-03) - inicia com CMD
-    if pacote.startswith("CMD ") or pacote.startswith("cmd "):
-        if re.search(r"^CMD SEN-", pacote):
-            return "Falha no Comando: comandos de controle sao direcionados a atuadores (ATU), nao a sensores (SEN)."
-        if re.search(r"AJUSTAR (1[0-9][0-9]|[2-9][0-9][0-9]|[0-9]{4,})%", pacote):
-            return "Falha no Comando: valor de ajuste acima de 100%. O intervalo aceito e 0 a 100%."
-        if re.search(r"AJUSTAR %", pacote):
-            return "Falha no Comando: valor percentual ausente na instrucao AJUSTAR."
-        if re.search(r"^CMD ATU-[A-Z]{2,3}-[0-9]{4} [A-Z]+", pacote):
-            return "Falha no Comando: acao nao reconhecida. Acoes validas: LIGAR, DESLIGAR, ABRIR, FECHAR, AJUSTAR."
-        return "Falha no Comando: sintaxe da instrucao CMD malformada ou parametros incompativeis."
-
-    # 3. Intenção: Telemetria (ER-02) - contem separadores :TEMP=, :UMID= ou :PRES=
-    if any(k in pacote for k in (":TEMP=", ":UMID=", ":PRES=", ":temp=", ":umid=", ":pres=")):
-        if pacote.startswith("ATU-"):
-            return "Falha na Telemetria: atuadores (ATU) nao emitem telemetria. Apenas sensores (SEN) sao aceitos."
-        if ":TEMP=" in pacote:
-            return "Falha na Telemetria: valor de temperatura fora do intervalo admissivel (-199 a 199) ou formato decimal invalido."
-        if ":UMID=" in pacote:
-            return "Falha na Telemetria: valor de umidade fora do intervalo admissivel (0 a 100) ou formato decimal invalido."
-        if ":PRES=" in pacote:
-            return "Falha na Telemetria: valor de pressao fora do intervalo admissivel (850 a 1099 hPa)."
-        return "Falha na Telemetria: variavel ou valor metrico nao conforme com a especificacao tecnica."
-
-    # 4. Intenção: IPv4/CIDR (ER-04) - contem pontos e digitos
-    if re.search(r"^[0-9.]+(/[0-9]*)?$", pacote) and "." in pacote:
-        if re.search(r"(25[6-9]|2[6-9][0-9]|[3-9][0-9][0-9]|[0-9]{4,})\.", pacote) or re.search(r"\.(25[6-9]|2[6-9][0-9]|[3-9][0-9][0-9]|[0-9]{4,})($|/)", pacote):
-            return "Falha no IPv4: octeto com valor superior a 255. Cada octeto deve estar no intervalo 0 a 255."
-        if re.search(r"/(3[3-9]|[4-9][0-9]|[0-9]{3,})$", pacote):
-            return "Falha no IPv4/CIDR: mascara de sub-rede superior a /32. O intervalo valido e /0 a /32."
-        if pacote.endswith("/"):
-            return "Falha no IPv4/CIDR: barra de mascara presente sem valor numerico."
-        if re.search(r"(^|\.)0[0-9]+", pacote):
-            return "Falha no IPv4: zero a esquerda detectado em octeto. Valores como '01' ou '007' nao sao permitidos."
-        partes = pacote.split("/")[0].split(".")
-        if len(partes) != 4:
-            return f"Falha no IPv4: endereco incompleto ou excessivo ({len(partes)} octetos encontrados; esperado 4)."
-        return "Falha no IPv4/CIDR: formato de endereco ou notacao CIDR invalida."
-
-    # 5. Intenção: ID do Dispositivo (ER-01) - inicia com SEN ou ATU
-    if re.search(r"^(sen|atu|SEN|ATU)-", pacote):
-        if re.search(r"[a-z]", pacote):
-            return "Falha no ID do Dispositivo: letras minusculas detectadas. O ID exige letras maiusculas (SEN/ATU)."
-        if re.search(r"^(SEN|ATU)-[A-Z]{1}-[0-9]+", pacote):
-            return "Falha no ID do Dispositivo: codigo do modelo possui apenas 1 letra. O minimo exigido e 2."
-        if re.search(r"^(SEN|ATU)-[A-Z]{4,}-[0-9]+", pacote):
-            return "Falha no ID do Dispositivo: codigo do modelo excede 3 letras (maximo 3)."
-        if re.search(r"^(SEN|ATU)-[A-Z]{2,3}-[0-9]{5,}", pacote):
-            return "Falha no ID do Dispositivo: campo numerico excede 4 digitos."
-        if re.search(r"^(SEN|ATU)-[A-Z]{2,3}-[0-9]{1,3}$", pacote):
-            return "Falha no ID do Dispositivo: campo numerico possui menos de 4 digitos."
-        return "Falha no ID do Dispositivo: formato geral malformado."
-
-    return "Falha estrutural: o pacote nao corresponde a nenhum padrao lexico conhecido."
+        return input(prompt)
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return None
 
 
+# ---------------------------------------------------------------------- #
+# Validação de um pacote
+# ---------------------------------------------------------------------- #
 def validar_pacote(pacote: str) -> tuple[bool, str, str]:
+    """Valida um pacote contra as cinco ERs.
+
+    Retorna (True, categoria, pacote) se alguma ER reconhece o pacote inteiro
+    ou (False, diagnóstico, pacote) caso contrário. Espaços nas extremidades
+    são removidos antes da validação (normalização de entrada).
     """
-    Tenta validar o pacote em uma das 5 categorias (ERs).
-    Retorna (True, tipo, pacote) se for válido.
-    Retorna (False, diagnóstico, pacote) se não combinar com nenhuma estrutura.
-    """
+    pacote = pacote.strip()
     if not pacote:
         return False, "Falha estrutural: pacote vazio recebido.", pacote
-
-    if ER_01_ID.fullmatch(pacote):
-        return True, "ID_DISPOSITIVO", pacote
-    if ER_02_TELEMETRIA.fullmatch(pacote):
-        return True, "TELEMETRIA", pacote
-    if ER_03_COMANDO.fullmatch(pacote):
-        return True, "COMANDO", pacote
-    if ER_04_IPV4_CIDR.fullmatch(pacote):
-        return True, "IPV4_CIDR", pacote
-    if ER_05_ALERTA_LOG.fullmatch(pacote):
-        return True, "ALERTA_LOG", pacote
-
-    # Diagnóstico específico por intenção e causa raiz
-    return False, diagnosticar_falha(pacote), pacote
+    er = classificar(pacote)
+    if er is not None:
+        return True, er.categoria, pacote
+    return False, diagnosticar(pacote).mensagem, pacote
 
 
-# =============================================================================
-# Modo Interativo (AC-1: agora acessível via menu)
-# =============================================================================
+def imprimir_resultado(pacote: Pacote, recuo: str = "  ") -> None:
+    if pacote.valido:
+        er = next(e for e in EXPRESSOES if e.categoria == pacote.categoria)
+        print(f"{recuo}[OK] Pacote íntegro. Categoria: {pacote.categoria} ({er.codigo} - {er.nome})")
+        return
+    diag = pacote.diagnostico
+    print(f"{recuo}[ERRO] {diag.mensagem}")
+    if diag.localizacao:
+        margem = recuo + " " * 7
+        print(f"{margem}{pacote.texto}")
+        print(f"{margem}{' ' * diag.localizacao.posicao}^")
+        print(f"{margem}Onde: {diag.localizacao.descrever()}")
 
-def modo_interativo():
-    """Modo de entrada interativa: o operador digita pacotes um a um."""
-    print("\n+======================================================+")
-    print("|          MODO INTERATIVO - Auditor Lexico            |")
-    print("|  Digite um pacote por linha. 'voltar' retorna ao     |")
-    print("|  menu. 'sair' encerra o programa.                    |")
-    print("+======================================================+\n")
 
+# ---------------------------------------------------------------------- #
+# Modos de operação
+# ---------------------------------------------------------------------- #
+def modo_interativo() -> bool:
+    """Valida pacotes digitados um a um. Retorna True se o usuário pediu 'sair'."""
+    print("\n" + caixa("MODO INTERATIVO", "Digite um pacote por linha.",
+                       "'voltar' retorna ao menu | 'sair' encerra"))
     while True:
-        try:
-            pacote = input(">>> ").strip()
-            if pacote.lower() == "sair":
-                print("Encerrando o Auditor Léxico.")
-                sys.exit(0)
-            if pacote.lower() == "voltar":
-                return
-            if not pacote:
-                continue
-
-            valido, mensagem, _ = validar_pacote(pacote)
-            if valido:
-                print(f"  [OK] Pacote válido. Categoria: {mensagem}")
-            else:
-                print(f"  [ERRO] {mensagem}")
-        except (KeyboardInterrupt, EOFError):
-            print("\nRetornando ao menu...")
-            return
+        entrada = ler("\n>>> ")
+        if entrada is None:
+            return False
+        comando = entrada.strip().lower()
+        if comando == "sair":
+            return True
+        if comando == "voltar":
+            return False
+        if not entrada.strip():
+            print("  [AVISO] Entrada vazia: digite um pacote (ex.: SEN-TM-0001:TEMP=25.5C).")
+            continue
+        imprimir_resultado(analisar_pacote(entrada.strip()))
 
 
-# =============================================================================
-# Modo Arquivo / Lote (AC-3: agora com filtros de relatório)
-# =============================================================================
-
-def modo_arquivo(caminho_arquivo: str):
-    """Processa um arquivo de log em lote e gera relatório com filtros."""
-    estatisticas = {
-        "ID_DISPOSITIVO": 0,
-        "TELEMETRIA": 0,
-        "COMANDO": 0,
-        "IPV4_CIDR": 0,
-        "ALERTA_LOG": 0,
-        "CORROMPIDOS": 0,
-    }
-    total = 0
-    pacotes_processados = []  # Armazena (valido, tipo_ou_diag, pacote_original)
-
+def modo_arquivo(caminho: str, destino: str | None = None, filtros: bool = True) -> list[Pacote] | None:
+    """Audita um arquivo em lote, mostra o relatório e (opcionalmente) o exporta."""
+    caminho = caminho.strip().strip('"').strip("'")
     try:
-        with open(caminho_arquivo, "r", encoding="utf-8") as f:
-            for linha in f:
-                linha = linha.strip()
-                if not linha:
-                    continue
-                total += 1
-                valido, mensagem, pacote_orig = validar_pacote(linha)
-                pacotes_processados.append((valido, mensagem, pacote_orig))
-                if valido:
-                    estatisticas[mensagem] += 1
-                else:
-                    estatisticas["CORROMPIDOS"] += 1
-
+        pacotes = ler_pacotes(caminho)
     except FileNotFoundError:
-        print(f"  Erro: Arquivo '{caminho_arquivo}' não encontrado.")
-        return
-    except Exception as e:
-        print(f"  Erro ao ler arquivo: {e}")
-        return
+        print(f"  [ERRO] Arquivo '{caminho}' não encontrado.")
+        return None
+    except IsADirectoryError:
+        print(f"  [ERRO] '{caminho}' é uma pasta; informe o caminho de um arquivo .txt.")
+        return None
+    except PermissionError:
+        print(f"  [ERRO] Sem permissão para ler '{caminho}'.")
+        return None
+    except UnicodeDecodeError:
+        print(f"  [ERRO] '{caminho}' não é um arquivo de texto UTF-8 válido.")
+        return None
 
-    # Relatório estatístico
-    integros = total - estatisticas["CORROMPIDOS"]
-    print("\n+======================================================+")
-    print("|              RELATORIO ESTATISTICO                   |")
-    print("+------------------------------------------------------+")
-    print(f"|  Arquivo: {caminho_arquivo:<42} |")
-    print(f"|  Total de pacotes lidos:       {total:>21} |")
-    print(f"|  Pacotes integros:             {integros:>21} |")
-    print(f"|  Pacotes corrompidos:          {estatisticas['CORROMPIDOS']:>21} |")
-    print("+------------------------------------------------------+")
-    print("|  Detalhes por categoria:                             |")
-    for k, v in estatisticas.items():
-        if k != "CORROMPIDOS":
-            print(f"|    {k:<30} {v:>17} |")
-    print("+======================================================+")
+    if not pacotes:
+        print(f"  [AVISO] O arquivo '{caminho}' não contém pacotes (vazio ou só comentários).")
+        return pacotes
 
-    # Filtros interativos (AC-3)
-    menu_filtros(pacotes_processados)
+    print("\n" + formatar_relatorio(pacotes, caminho))
+    if destino:
+        salvar_relatorio(pacotes, destino)
+    if filtros:
+        menu_filtros(pacotes)
+    return pacotes
 
 
-def menu_filtros(pacotes: list):
-    """Permite ao operador filtrar os pacotes processados por categoria."""
-    categorias_validas = [
-        "ID_DISPOSITIVO", "TELEMETRIA", "COMANDO",
-        "IPV4_CIDR", "ALERTA_LOG", "CORROMPIDOS"
-    ]
+def salvar_relatorio(pacotes: list[Pacote], destino: str) -> None:
+    try:
+        arquivo = exportar(pacotes, destino)
+        print(f"\n  [OK] Relatório exportado para: {arquivo}")
+    except ValueError as erro:
+        print(f"  [ERRO] {erro}")
+    except OSError as erro:
+        print(f"  [ERRO] Não foi possível salvar o relatório: {erro}")
 
+
+def menu_filtros(pacotes: list[Pacote]) -> None:
+    opcoes = {str(i): categoria for i, categoria in enumerate(CATEGORIAS, start=1)}
     while True:
-        print("\n--- Filtros de Relatório ---")
-        print("  [1] Exibir pacotes do tipo ID_DISPOSITIVO")
-        print("  [2] Exibir pacotes do tipo TELEMETRIA")
-        print("  [3] Exibir pacotes do tipo COMANDO")
-        print("  [4] Exibir pacotes do tipo IPV4_CIDR")
-        print("  [5] Exibir pacotes do tipo ALERTA_LOG")
-        print("  [6] Exibir pacotes CORROMPIDOS (com diagnóstico)")
-        print("  [7] Exibir TODOS os pacotes")
+        print("\n--- Filtros do relatório ---")
+        for numero, categoria in opcoes.items():
+            print(f"  [{numero}] Pacotes íntegros do tipo {categoria}")
+        print("  [6] Pacotes CORROMPIDOS (com diagnóstico)")
+        print("  [7] TODOS os pacotes")
+        print("  [8] Exportar relatório (.json, .csv ou .txt)")
         print("  [0] Voltar ao menu principal")
-
-        try:
-            opcao = input("Filtro >>> ").strip()
-        except (KeyboardInterrupt, EOFError):
+        opcao = ler("Filtro >>> ")
+        if opcao is None or opcao.strip() == "0":
             return
-
-        if opcao == "0":
-            return
-        elif opcao == "7":
-            exibir_pacotes_filtrados(pacotes, filtro=None)
-        elif opcao in ("1", "2", "3", "4", "5"):
-            cat = categorias_validas[int(opcao) - 1]
-            exibir_pacotes_filtrados(pacotes, filtro=cat)
+        opcao = opcao.strip()
+        if opcao in opcoes:
+            exibir(p for p in pacotes if p.categoria == opcoes[opcao])
         elif opcao == "6":
-            exibir_pacotes_filtrados(pacotes, filtro="CORROMPIDOS")
-        else:
-            print("  Opção inválida.")
-
-
-def exibir_pacotes_filtrados(pacotes: list, filtro: str | None):
-    """Exibe pacotes filtrados por categoria."""
-    print()
-    contagem = 0
-    for valido, tipo_ou_diag, pacote_orig in pacotes:
-        if filtro is None:
-            # Exibir todos
-            if valido:
-                print(f"  [OK] [{tipo_ou_diag}] {pacote_orig}")
+            exibir(p for p in pacotes if not p.valido)
+        elif opcao == "7":
+            exibir(pacotes)
+        elif opcao == "8":
+            destino = ler("  Salvar como (ex.: relatorio.json): ")
+            if destino and destino.strip():
+                salvar_relatorio(pacotes, destino.strip())
             else:
-                print(f"  [ERRO] {pacote_orig}")
-                print(f"         -> {tipo_ou_diag}")
-            contagem += 1
-        elif filtro == "CORROMPIDOS":
-            if not valido:
-                print(f"  [ERRO] {pacote_orig}")
-                print(f"         -> {tipo_ou_diag}")
-                contagem += 1
+                print("  [AVISO] Nome de arquivo vazio. Exportação cancelada.")
         else:
-            if valido and tipo_ou_diag == filtro:
-                print(f"  [OK] {pacote_orig}")
-                contagem += 1
+            print("  [AVISO] Opção inválida. Escolha um número de 0 a 8.")
 
-    if contagem == 0:
-        print("  Nenhum pacote encontrado para este filtro.")
+
+def exibir(pacotes) -> None:
+    contagem = 0
+    print()
+    for p in pacotes:
+        print(f"  L{p.linha:<4}", end="")
+        imprimir_resultado(p, recuo="")
+        if p.valido:
+            print(f"        {p.texto}")
+        contagem += 1
+    print("  Nenhum pacote encontrado para este filtro." if contagem == 0
+          else f"\n  Total exibido: {contagem} pacote(s).")
+
+
+def explicar_afn(pacote: str, codigo_er: str | None = None) -> None:
+    """Mostra a simulação do AFNε (conjuntos de estados após cada símbolo)."""
+    if codigo_er is None:
+        er = classificar(pacote)
+        codigo_er = er.codigo if er else identificar_intencao(pacote)
+    if codigo_er is None:
+        print("  [AVISO] Não foi possível identificar qual ER o pacote tenta seguir; "
+              "informe a ER (ex.: --er ER-01).")
+        return
+    er = POR_CODIGO[codigo_er]
+    afn = AUTOMATOS[codigo_er]
+    resultado = afn.simular(pacote)
+
+    print(f"\n  Simulação do AFNε da {er.codigo} ({er.nome}): "
+          f"{afn.n_estados} estados, {afn.total_movimentos_vazios()} movimentos ε")
+    print(f"  Cadeia: \"{pacote}\"  (|w| = {len(pacote)})\n")
+    print(f"  {'passo':>5}  {'lido':^6}  conjunto de estados ativos (após o fecho-ε)")
+    for passo in resultado.passos:
+        lido = "—" if passo.simbolo is None else f"'{formatar_simbolo(passo.simbolo)}'"
+        estados = ", ".join(f"q{e}" for e in sorted(passo.estados))
+        print(f"  {passo.lidos:>5}  {lido:^6}  {{{estados}}}")
+
+    finais = ", ".join(f"q{f}" for f in sorted(afn.finais))
+    if resultado.aceita:
+        print(f"\n  Resultado: ACEITA — o último conjunto contém o estado final ({finais}).")
     else:
-        print(f"\n  Total exibido: {contagem} pacote(s).")
+        pos = resultado.posicao_erro
+        if pos < len(pacote):
+            lido = f"'{formatar_simbolo(pacote[pos])}'"
+            print(f"  {pos + 1:>5}  {lido:^6}  ∅  (nenhuma transição definida)")
+        print(f"\n  Resultado: REJEITADA — {localizar_erro(codigo_er, pacote).descrever()}.")
+        print(f"  Estado(s) final(is) do AFNε: {{{finais}}}")
 
 
-# =============================================================================
-# Menu Principal (AC-1)
-# =============================================================================
+def mostrar_expressoes() -> None:
+    for er in EXPRESSOES:
+        afn = AUTOMATOS[er.codigo]
+        print(f"\n{er.codigo} — {er.nome} [{er.categoria}]")
+        print(f"  Finalidade : {er.finalidade}")
+        print(f"  Alfabeto   : {er.alfabeto}")
+        print("  ER formal  :")
+        for linha in er.formal_completa():
+            print(f"      {linha}")
+        print(f"  No código  : re.fullmatch(r\"{er.padrao}\", pacote)")
+        print(f"  AFNε       : {afn.n_estados} estados, {len(afn.transicoes)} transições "
+              f"({afn.total_movimentos_vazios()} movimentos ε)")
 
-def menu_principal():
-    """Menu interativo principal do Auditor Léxico."""
-    print("+======================================================+")
-    print("|     AUDITOR LEXICO DE TELEMETRIA DE SENSORES         |")
-    print("|              INDUSTRIAIS v1.0                        |")
-    print("|                                                      |")
-    print("|  Firewall lexico para redes de sensores/atuadores    |")
-    print("+======================================================+")
 
+def menu_principal() -> None:
+    print(caixa("AUDITOR LÉXICO DE TELEMETRIA", "DE SENSORES INDUSTRIAIS  v2.0", "",
+                "Firewall léxico para redes de sensores e atuadores"))
     while True:
-        print("\n--- Menu Principal ---")
-        print("  [1] Ler arquivo de log (.txt) em lote")
-        print("  [2] Entrada textual interativa")
-        print("  [3] Sair")
-
-        try:
-            opcao = input("Opção >>> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\nEncerrando o Auditor Léxico.")
+        print("\n--- Menu principal ---")
+        print("  [1] Auditar arquivo de pacotes (.txt) em lote")
+        print("  [2] Validar pacotes digitados (modo interativo)")
+        print("  [3] Simular o AFNε passo a passo para um pacote")
+        print("  [4] Ver as cinco expressões regulares")
+        print("  [0] Sair")
+        opcao = ler("Opção >>> ")
+        if opcao is None:
             break
-
+        opcao = opcao.strip()
         if opcao == "1":
-            try:
-                caminho = input("  Caminho do arquivo: ").strip()
-            except (KeyboardInterrupt, EOFError):
-                continue
-            if caminho:
+            caminho = ler("  Caminho do arquivo (ex.: dados/dados_exemplo.txt): ")
+            if caminho and caminho.strip():
                 modo_arquivo(caminho)
             else:
-                print("  Caminho vazio. Operação cancelada.")
+                print("  [AVISO] Caminho vazio. Operação cancelada.")
         elif opcao == "2":
-            modo_interativo()
+            if modo_interativo():
+                break
         elif opcao == "3":
-            print("Encerrando o Auditor Léxico.")
+            pacote = ler("  Pacote: ")
+            if pacote and pacote.strip():
+                explicar_afn(pacote.strip())
+            else:
+                print("  [AVISO] Pacote vazio. Operação cancelada.")
+        elif opcao == "4":
+            mostrar_expressoes()
+        elif opcao == "0" or opcao.lower() == "sair":
             break
         else:
-            print("  Opção inválida. Escolha 1, 2 ou 3.")
+            print("  [AVISO] Opção inválida. Escolha 0, 1, 2, 3 ou 4.")
+    print("Encerrando o Auditor Léxico.")
 
 
-# =============================================================================
-# Ponto de entrada
-# =============================================================================
+# ---------------------------------------------------------------------- #
+# Linha de comando
+# ---------------------------------------------------------------------- #
+def criar_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="auditor.py",
+        description="Auditor Léxico de Telemetria de Sensores Industriais (firewall léxico com ERs).",
+    )
+    parser.add_argument("arquivo", nargs="?", help="arquivo .txt com um pacote por linha")
+    parser.add_argument("--exportar", metavar="DESTINO",
+                        help="salva o relatório do arquivo em .json, .csv ou .txt")
+    parser.add_argument("--sem-filtros", action="store_true",
+                        help="não abre o menu de filtros após o relatório")
+    parser.add_argument("--pacote", nargs="+", metavar="PACOTE", help="valida um ou mais pacotes")
+    parser.add_argument("--explicar", metavar="PACOTE", help="simula o AFNε passo a passo")
+    parser.add_argument("--er", choices=sorted(POR_CODIGO), help="ER usada por --explicar")
+    parser.add_argument("--expressoes", action="store_true", help="mostra as cinco ERs")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = criar_parser().parse_args(argv)
+
+    if args.expressoes:
+        mostrar_expressoes()
+        return 0
+    if args.explicar is not None:
+        if not args.explicar.strip():
+            print("  [AVISO] Pacote vazio.")
+            return 1
+        explicar_afn(args.explicar.strip(), args.er)
+        return 0
+    if args.pacote:
+        todos_validos = True
+        for texto in args.pacote:
+            if not texto.strip():
+                print("  [ERRO] Falha estrutural: pacote vazio recebido.")
+                todos_validos = False
+                continue
+            pacote = analisar_pacote(texto.strip())
+            print(f"\n  Pacote: {pacote.texto}")
+            imprimir_resultado(pacote)
+            todos_validos &= pacote.valido
+        return 0 if todos_validos else 1
+    if args.arquivo:
+        filtros = not args.sem_filtros and sys.stdin.isatty()
+        pacotes = modo_arquivo(args.arquivo, args.exportar, filtros)
+        return 0 if pacotes is not None else 1
+
+    menu_principal()
+    return 0
+
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        # Atalho: se receber argumento de linha de comando, processa direto
-        modo_arquivo(sys.argv[1])
-    else:
-        menu_principal()
+    sys.exit(main())
