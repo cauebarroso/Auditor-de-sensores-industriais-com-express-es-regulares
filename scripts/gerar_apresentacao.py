@@ -28,7 +28,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(RAIZ / "src"), str(RAIZ / "tests"), str(RAIZ / "scripts")]
 
 from casos_teste import CASOS  # noqa: E402
-from conteudo_fichas import OPERADORES  # noqa: E402
+from conteudo_fichas import LINGUAGEM_CURTA, OPERADORES  # noqa: E402
 from diagnostico import AUTOMATOS  # noqa: E402
 from expressoes import POR_CODIGO  # noqa: E402
 import auditor  # noqa: E402
@@ -87,46 +87,63 @@ class Slide:
     capa: bool = False
 
 
-def slide_ficha(codigo: str, resumo: str, notas: str, altura_formal: float) -> Slide:
-    """Ficha da ER: finalidade, alfabeto, ER formal, padrão do código e operadores."""
+@dataclass
+class Medidas:
+    """Medidas da coluna esquerda do slide de uma ER (dependem do tamanho da ER formal)."""
+    altura_formal: float
+    altura_codigo: float
+    fonte_formal: int = 12
+    fonte_codigo: int = 11
+    linha_tabela: float = 0.27
+
+
+MEDIDAS = {
+    "ER-01": Medidas(0.45, 0.32),
+    "ER-02": Medidas(1.4, 0.75),
+    "ER-03": Medidas(0.95, 0.55),
+    "ER-04": Medidas(0.8, 0.55),
+    "ER-05": Medidas(1.85, 0.85, fonte_formal=11, fonte_codigo=10, linha_tabela=0.25),
+}
+
+
+def slide_er(codigo: str, resumo: str, notas: str, imagem: Path | None = None) -> Slide:
+    """Ficha completa de uma ER em um slide: finalidade, linguagem, alfabeto,
+    ER formal, padrão do código, operadores e 6 + 6 cadeias de teste.
+    A ER-01 é pequena e também recebe o AFNε no rodapé."""
     er = POR_CODIGO[codigo]
     afn = AUTOMATOS[codigo]
-    codigo_longo = len(er.padrao) > 110
-    y_codigo = 2.05 + altura_formal + 0.45
-    y_tabela = y_codigo + (0.7 if codigo_longo else 0.6)
+    m = MEDIDAS[codigo]
+
+    y_rotulo_codigo = 2.23 + m.altura_formal + 0.08
+    y_codigo = y_rotulo_codigo + 0.28
+    y_operadores = y_codigo + m.altura_codigo + 0.12
     operadores = [["No código", "Na ER formal", "Operador"], *[list(linha) for linha in OPERADORES[codigo]]]
-    return Slide(f"{codigo} — {er.nome}", [
-        Texto(0.5, 1.0, 12.3, 0.4, [resumo], 16, CINZA),
-        Texto(0.5, 1.38, 12.3, 0.35, [er.alfabeto], 14, AZUL),
-        Texto(0.5, 1.72, 3.0, 0.33, ["ER formal"], 13, AZUL),
-        Texto(0.5, 2.05, 12.3, altura_formal, er.formal_completa(), 14, codigo=True, fundo=AZUL_CLARO),
-        Texto(0.5, y_codigo - 0.35, 3.0, 0.33, ["No código (re.fullmatch)"], 13, AZUL),
-        Texto(0.5, y_codigo, 12.3, 0.55 if codigo_longo else 0.45, [f'r"{er.padrao}"'],
-              12 if codigo_longo else 14, codigo=True, fundo=AZUL_CLARO),
-        Tabela(0.5, y_tabela, 12.35, operadores, [4.75, 4.45, 3.15], 13, 0.3, codigo_colunas=(0, 1)),
+
+    aceitas = [c for c in CASOS[codigo] if c.aceita][:6]
+    rejeitadas = [c for c in CASOS[codigo] if not c.aceita][:6]
+    testes = [["", "Cadeia (★ = caso-limite)"]]
+    testes += [["✔", exibir_cadeia(c.cadeia) + (" ★" if c.limite else "")] for c in aceitas]
+    testes += [["✘", exibir_cadeia(c.cadeia) + (" ★" if c.limite else "")] for c in rejeitadas]
+    longo = max(len(c.cadeia) for c in aceitas + rejeitadas) > 45
+    linha_testes = 0.25 if imagem else 0.29
+
+    elementos = [
+        Texto(0.5, 0.95, 12.3, 0.32, [resumo], 14, CINZA),
+        Texto(0.5, 1.27, 12.3, 0.3, [LINGUAGEM_CURTA[codigo]], 13),
+        Texto(0.5, 1.57, 12.3, 0.3, [er.alfabeto], 13, AZUL),
+        Texto(0.5, 1.95, 3.0, 0.28, ["ER formal"], 12, AZUL),
+        Texto(0.5, 2.23, 6.45, m.altura_formal, er.formal_completa(), m.fonte_formal, codigo=True, fundo=AZUL_CLARO),
+        Texto(0.5, y_rotulo_codigo, 3.5, 0.28, ["No código (re.fullmatch)"], 12, AZUL),
+        Texto(0.5, y_codigo, 6.45, m.altura_codigo, [f'r"{er.padrao}"'], m.fonte_codigo, codigo=True, fundo=AZUL_CLARO),
+        Tabela(0.5, y_operadores, 6.45, operadores, [2.45, 2.3, 1.7], 11, m.linha_tabela, codigo_colunas=(0, 1)),
+        Texto(7.15, 1.95, 5.7, 0.28, ["Testes: 6 aceitas e 6 rejeitadas (as 16 estão no relatório)"], 12, AZUL),
+        Tabela(7.15, 2.23, 5.7, testes, [0.4, 5.3], 10 if longo else 12, linha_testes, codigo_colunas=(1,)),
         Texto(10.3, 0.35, 2.6, 0.4, [f"AFNε: {afn.n_estados} estados · {afn.total_movimentos_vazios()} ε"],
               12, "FFFFFF", "direita"),
-    ], notas)
-
-
-def slide_testes_er(codigo: str, notas: str, imagem: Path | None = None) -> Slide:
-    """Linguagem L e as 16 cadeias de teste da ER (com o AFNε, se couber)."""
-    er = POR_CODIGO[codigo]
-    casos = CASOS[codigo]
-    linhas = [["#", "Cadeia", "Esperado", "Justificativa"]]
-    for i, caso in enumerate(casos, start=1):
-        linhas.append([str(i), exibir_cadeia(caso.cadeia), "✔ aceita" if caso.aceita else "✘ rejeitada",
-                       caso.motivo + (" (caso-limite)" if caso.limite else "")])
-    elementos = [Texto(0.5, 1.0, 12.3, 0.8, [f"L = {er.linguagem}"], 12, CINZA)]
+    ]
     if imagem is not None:
-        elementos.append(Imagem(0.5, 1.8, 12.3, 1.65, imagem))
-        elementos.append(Tabela(0.5, 3.55, 12.35, linhas, [0.4, 3.9, 1.35, 6.7], 10, 0.2, codigo_colunas=(1,)))
-        titulo = f"{codigo} — AFNε e testes"
-    else:
-        elementos.append(Tabela(0.5, 1.95, 12.35, linhas, [0.4, 6.0, 1.45, 4.5], 12, 0.29, codigo_colunas=(1,)))
-        titulo = f"{codigo} — linguagem e testes"
-    aceitas = sum(c.aceita for c in casos)
-    return Slide(f"{titulo} ({aceitas} aceitas, {len(casos) - aceitas} rejeitadas)", elementos, notas)
+        elementos.append(Imagem(0.5, 5.6, 12.35, 1.45, imagem))
+    return Slide(f"{codigo} — {er.nome}", elementos, notas)
 
 
 def saida_demonstracao() -> list[str]:
@@ -139,34 +156,37 @@ def saida_demonstracao() -> list[str]:
     return [*erro, "", *passos]
 
 
-def slide_testes() -> Slide:
-    """Slide com os números reais da suíte (coletados do pytest)."""
+def slide_verificacao() -> Slide:
+    """Consistência entre as representações e resultados reais dos testes."""
     resumo, por_arquivo = resultados_pytest()
-    descricao = {
-        "tests/test_expressoes.py": "Cadeias aceitas/rejeitadas, requisitos 6+6, categoria única",
-        "tests/test_automatos.py": "AFNε × re, provas de equivalência, .jff, linguagens disjuntas",
-        "tests/test_aplicacao.py": "Entradas vazias/inválidas, diagnóstico, lote, CLI",
-    }
-    linhas = [["Arquivo", "O que verifica", "Testes"]]
-    linhas += [[arquivo.split("/")[1], descricao.get(arquivo, ""), str(n)] for arquivo, n in sorted(por_arquivo.items())]
-    linhas.append(["Total", "python -m pytest", f"{sum(por_arquivo.values())} ✔"])
-    return Slide("Testes e resultados", [
-        Tabela(0.5, 1.15, 12.35, linhas, [3.0, 7.75, 1.6], 16, 0.55, codigo_colunas=(0,)),
-        Texto(0.5, 4.2, 6.0, 2.8, [
-            "**Casos-limite cobertos",
-            "• 0% e 100%; 850 e 1099 hPa",
-            "• octetos 0 e 255; máscaras /0 e /32",
-            "• 29/02, 30/04, 31/07 aceitas; 30/02, 31/04, hora 24 rejeitadas",
-            "• menor e maior cadeia de L₁; a cadeia vazia ε",
-        ], 17),
-        Texto(6.85, 4.2, 6.0, 2.8, [
-            "**Além das 80 cadeias de teste",
-            "• JFLAP 7.1: 80/80 com o resultado esperado",
-            "• 10.000 cadeias aleatórias: 0 divergências entre AFNε e re",
-            "• Dados de exemplo: 20 íntegros e 14 corrompidos, todos com a causa correta",
-        ], 17),
-    ], f"Caue (~1 min). Resultado atual: {resumo}. Os casos de teste ficam em um único arquivo usado pelo "
-       "pytest, pelo JFLAP e pelo relatório, então não há divergência entre eles.")
+    return Slide("Mesma linguagem em todas as representações", [
+        Texto(0.5, 1.1, 6.4, 5.7, [
+            "**1. Código → AFNε (construção de Thompson)",
+            "O AFNε é construído a partir do padrão exato do código e exportado para o JFLAP.",
+            "**2. ER formal ≡ código: prova",
+            "Busca em largura sobre o produto dos dois AFNε (construção de subconjuntos): nenhuma cadeia "
+            "distingue as linguagens.",
+            "**3. Arquivo .jff ≡ código: prova",
+            "O .jff é lido de volta e comparado pelo mesmo algoritmo.",
+            "**4. Executado no próprio JFLAP 7.1",
+            "Cada .jff rodou no motor do JFLAP com as 16 cadeias da sua ER.",
+        ], 15),
+        Tabela(7.2, 1.2, 5.65, [
+            ["Verificação", "Resultado"],
+            ["python -m pytest", f"{sum(por_arquivo.values())} testes ✔"],
+            ["ER formal ≡ código", "5/5 provadas"],
+            [".jff ≡ código", "5/5 provadas"],
+            ["JFLAP 7.1 (16 cadeias por ER)", "80/80"],
+            ["AFNε × re, cadeias aleatórias", "10.000, 0 divergências"],
+            ["Linguagens disjuntas", "interseções vazias"],
+            ["Dados de exemplo", "20 íntegros, 14 corrompidos"],
+        ], [3.05, 2.6], 13, 0.42),
+        Texto(7.2, 4.75, 5.65, 1.05, [
+            "Achados no JFLAP 7.1: rótulos com '[' viram intervalo (por isso INFO, não [INFO]) e, após um "
+            "rótulo de intervalo como [A-Z], o simulador não aplica o fecho-ε (por isso uma transição por símbolo)."],
+            12, CINZA, fundo=AZUL_CLARO),
+    ], f"Caue (~1 min). Esta é a regra central do guia. Não comparamos só exemplos: o algoritmo percorre todos "
+       f"os pares de estados alcançáveis, então é uma prova de equivalência. Resultado atual do pytest: {resumo}.")
 
 
 def slides() -> list[Slide]:
@@ -177,48 +197,33 @@ def slides() -> list[Slide]:
             Texto(0.8, 4.6, 11.7, 0.5, ["Linguagens Formais e Autômatos · Trabalho do 1º Bimestre · CESUPA"], 16, "D6E2F0"),
             Texto(0.8, 5.1, 11.7, 0.5, ["Augusto Rodrigues  ·  Caue Jadão  ·  César Augusto"], 18, "FFFFFF"),
             Texto(0.8, 6.4, 11.7, 0.4, ["github.com/cauebarroso/Auditor-de-sensores-industriais-com-express-es-regulares"], 13, "AFC3DB"),
-        ], "Abertura (todos). Apresentar a equipe e o tema em uma frase: um firewall que só deixa passar pacotes "
+        ], "Augusto (~15 s). Apresentar a equipe e o tema em uma frase: um firewall que só deixa passar pacotes "
            "de sensores e atuadores que pertencem à linguagem de uma das cinco ERs.", capa=True),
 
-        Slide("O problema e a solução", [
-            Texto(0.5, 1.1, 6.6, 4.8, [
+        Slide("Problema, solução, entradas e saídas", [
+            Texto(0.5, 1.1, 6.4, 3.6, [
                 "• Sensores e atuadores conversam com o supervisório (SCADA/IIoT) por pacotes de texto.",
-                "• Um único símbolo errado vira uma leitura falsa ou uma ordem perigosa.",
+                "• Um único símbolo errado vira leitura falsa ou ordem perigosa: TEMP=1O4.7C, AJUSTAR 120%, 2026-09-31.",
                 "• Solução: um firewall léxico. O pacote só passa se pertencer à linguagem de uma das cinco ERs.",
-                "• Pacotes bloqueados recebem a causa provável e a coluna exata do erro, obtida simulando o AFNε.",
-            ], 19),
-            Texto(7.4, 1.1, 5.45, 0.4, ["Pacotes que chegam à rede"], 14, AZUL),
-            Texto(7.4, 1.5, 5.45, 4.4, [
-                "SEN-TMP-0101:TEMP=78.4C        ✔",
-                "CMD ATU-VLV-0201 AJUSTAR 40%   ✔",
-                "10.20.0.0/16                   ✔",
-                "2026-09-30T06:42:10 WARN SEN-TMP-0101: ...",
-                "",
-                "SEN-TMP-0101:TEMP=1O4.7C       ✘",
-                "     letra O no lugar do zero",
-                "CMD ATU-VLV-0201 AJUSTAR 120%  ✘",
-                "     ajuste acima de 100%",
-                "2026-09-31T07:10:00 INFO ...   ✘",
-                "     setembro tem 30 dias",
-            ], 13, codigo=True, fundo=AZUL_CLARO),
-        ], "Augusto (~1 min). Contextualizar: redes industriais trocam texto; um caractere errado pode virar "
-           "leitura falsa ou comando perigoso. Mostrar à direita exemplos reais dos dados de demonstração."),
-
-        Slide("Entradas → processamento → saídas", [
-            Texto(0.5, 1.2, 3.9, 3.3, ["**Entradas", "• Pacote digitado (modo interativo)", "• Pacote por argumento (--pacote)",
-                                      "• Arquivo .txt em lote, com comentários #"], 16, fundo=AZUL_CLARO),
-            Texto(4.7, 1.2, 3.9, 3.3, ["**Processamento", "• Normaliza (remove espaços das pontas)", "• re.fullmatch nas 5 ERs",
-                                      "• Extrai campos dos válidos", "• Diagnostica os inválidos pelo AFNε"], 16, fundo=AZUL_CLARO),
-            Texto(8.9, 1.2, 3.95, 3.3, ["**Saídas", "• [OK] / [ERRO] com coluna do erro", "• Relatório de conformidade",
-                                       "• Filtros por categoria", "• Exportação JSON, CSV ou TXT"], 16, fundo=AZUL_CLARO),
-            Tabela(0.5, 4.8, 12.35, [
-                ["Módulo", "Responsabilidade"],
-                ["expressoes.py", "As 5 ERs e as fichas (alfabeto, linguagem, ER formal)"],
-                ["afn.py · construtor_afn.py", "AFNε: fecho-ε, simulação, construção de Thompson, prova de equivalência"],
-                ["diagnostico.py · relatorio.py · auditor.py", "Diagnóstico, relatório/exportação e interface (menu e linha de comando)"],
-            ], [4.4, 7.95], 13, codigo_colunas=(0,)),
-        ], "Augusto (~1 min). Requisito do trabalho: entradas, processamento e saídas. Destacar o tratamento de "
-           "entradas vazias e inválidas (arquivo inexistente, vazio, binário, pasta) e a organização em módulos."),
+                "• Pacotes bloqueados recebem a causa e a coluna exata do erro, obtida simulando o AFNε.",
+            ], 17),
+            Texto(0.5, 4.85, 6.4, 1.9, [
+                "**Código em módulos",
+                "expressoes · afn · construtor_afn · diagnostico · relatorio · auditor",
+                "Python 3.11+, só biblioteca padrão; testes com pytest.",
+            ], 14),
+            Texto(7.2, 1.1, 5.65, 1.75, ["**Entradas", "• Pacote digitado (modo interativo) ou --pacote",
+                                        "• Arquivo .txt em lote (comentários # e linhas vazias ignorados)"],
+                  14, fundo=AZUL_CLARO),
+            Texto(7.2, 3.0, 5.65, 1.75, ["**Processamento", "• re.fullmatch nas 5 ERs (linguagens disjuntas)",
+                                        "• Extrai campos dos válidos e diagnostica os inválidos"],
+                  14, fundo=AZUL_CLARO),
+            Texto(7.2, 4.9, 5.65, 1.85, ["**Saídas", "• [OK] / [ERRO] com a coluna do erro",
+                                        "• Relatório de conformidade, filtros e exportação JSON/CSV/TXT",
+                                        "• Entradas vazias ou inválidas: mensagem clara, sem travar"],
+                  14, fundo=AZUL_CLARO),
+        ], "Augusto (~1 min). Contextualizar o problema e mostrar entradas, processamento e saídas. Destacar o "
+           "tratamento de entradas vazias e inválidas e a organização em módulos."),
 
         Slide("Notação formal × sintaxe no código", [
             Tabela(0.5, 1.15, 12.35, [
@@ -237,100 +242,59 @@ def slides() -> list[Slide]:
             Texto(0.5, 6.0, 12.35, 0.9, [
                 "Sempre re.fullmatch (dispensa ^ e $). Proibidos e rejeitados pelo nosso analisador: "
                 "\\d \\w \\s, ponto curinga, classes negadas, retroreferências e lookarounds."], 15, CINZA),
-        ], "Augusto (~40 s). Explicar que a ER formal e o código são duas escritas da mesma linguagem; os atalhos "
-           "do Python (+, ?, {m,n}) são derivados dos operadores básicos. O próprio programa rejeita recursos não regulares."),
+        ], "Augusto (~40 s). A ER formal e o código são duas escritas da mesma linguagem; os atalhos do Python "
+           "(+, ?, {m,n}) são derivados dos operadores básicos. O próprio programa rejeita recursos não regulares."),
 
-        slide_ficha("ER-01", "Identificador de um sensor (SEN) ou atuador (ATU); bloco reutilizado nas ERs 02, 03 e 05.",
-                    "Augusto (~40 s). Ler a ficha: alfabeto, ER formal com a definição ⟨ID⟩ e o padrão do código. "
-                    "Explicar a tabela de operadores: {2,3} é rr(r | ε) e {4} é a concatenação de 4 cópias.", 0.7),
-        slide_testes_er("ER-01", "Augusto (~40 s). No AFNε: a união SEN | ATU abre dois ramos por ε; o desvio ε entre "
-                                 "q12 e q13 é a terceira letra opcional. L₁ é finita: 365.040.000 cadeias. Destacar os "
-                                 "casos-limite (menor e maior cadeia, 5 dígitos, ε).", DIAGRAMAS / "ER-01.png"),
+        slide_er("ER-01", "Identificador de um sensor (SEN) ou atuador (ATU); bloco reutilizado nas ERs 02, 03 e 05.",
+                 "Augusto (~1 min). Ficha: ER formal com ⟨ID⟩; {2,3} é rr(r | ε) e {4} é a concatenação de 4 cópias. "
+                 "No AFNε (rodapé): a união SEN | ATU abre dois ramos por ε; o desvio ε entre q12 e q13 é a terceira "
+                 "letra opcional. Casos-limite: 0000, 9999, 5 dígitos, ε.", DIAGRAMAS / "ER-01.png"),
 
-        slide_ficha("ER-02", "Leitura de um sensor: temperatura (C), umidade (%) ou pressão (hPa), dentro da faixa.",
-                    "Augusto (~40 s). Três ramos na união, um por grandeza. ([1-9] | ε)[0-9] impede zero à esquerda; "
-                    "o escape \\. torna o ponto literal (sem ele o ponto seria qualquer caractere).", 1.75),
+        slide_er("ER-02", "Leitura de um sensor: temperatura (C), umidade (%) ou pressão (hPa), dentro da faixa.",
+                 "Augusto (~45 s). Três ramos na união, um por grandeza. ([1-9] | ε)[0-9] impede zero à esquerda; "
+                 "o escape \\. torna o ponto literal. Casos-limite: extremos de cada faixa (−199.9 e 199.9 C, "
+                 "100.0%, 850 hPa; 200C, 100.5%, 849 e 1100 hPa rejeitados)."),
         Slide("ER-02 — AFNε: o ID do sensor e a união das três medições", [
             Imagem(0.5, 1.05, 12.3, 1.3, DIAGRAMAS / "partes" / "ER-02_p1.png"),
             Imagem(0.5, 2.4, 12.3, 4.55, DIAGRAMAS / "partes" / "ER-02_p2.png"),
         ], "Augusto (~30 s). Parte 1: o ID do sensor. Parte 2: três movimentos ε abrem os ramos TEMP, UMID e PRES. "
            "No ramo TEMP, o desvio ε paralelo ao '-' é o sinal opcional (- | ε)."),
-        slide_testes_er("ER-02", "Augusto (~30 s). Os casos-limite são os extremos de cada faixa: −199.9 e 199.9 C, "
-                                 "0 e 100.0%, 850 e 1099 hPa (aceitos) e 200C, 100.5%, 849 e 1100 hPa (rejeitados)."),
 
-        slide_ficha("ER-03", "Ordem para um atuador: ligar, desligar, abrir, fechar ou ajustar de 0 a 100%.",
-                    "Caue (~40 s). Cinco ações por união; o espaço é símbolo do alfabeto (⎵), por isso não usamos \\s. "
-                    "⟨PCT⟩ = 100 | ([1-9] | ε)[0-9] cobre 0 a 100 sem zero à esquerda.", 0.95),
+        slide_er("ER-03", "Ordem para um atuador: ligar, desligar, abrir, fechar ou ajustar de 0 a 100%.",
+                 "Caue (~45 s). Cinco ações por união; o espaço é símbolo do alfabeto (⎵), por isso não usamos \\s. "
+                 "⟨PCT⟩ = 100 | ([1-9] | ε)[0-9] cobre 0 a 100. Casos-limite: 0% e 100% aceitos, 101% e espaço extra "
+                 "no final rejeitados."),
         Slide("ER-03 — AFNε: o ID do atuador e as cinco ações", [
             Imagem(0.5, 1.05, 12.3, 1.5, DIAGRAMAS / "partes" / "ER-03_p1.png"),
             Imagem(0.5, 2.7, 12.3, 4.25, DIAGRAMAS / "partes" / "ER-03_p2.png"),
         ], "Caue (~30 s). A partir de q17, cinco movimentos ε abrem os ramos das ações. No ramo AJUSTAR, a união "
            "100 | ([1-9] | ε)[0-9] aparece como dois ramos, com o desvio ε do dígito opcional."),
-        slide_testes_er("ER-03", "Caue (~30 s). Casos-limite: 0% e 100% aceitos, 101% rejeitado; espaço extra no final "
-                                 "rejeitado (a ER exige a cadeia inteira)."),
 
-        slide_ficha("ER-04", "Endereço IPv4 com octetos de 0 a 255, sem zero à esquerda, e máscara CIDR opcional (/0 a /32).",
-                    "Caue (~40 s). O octeto é dividido em faixas disjuntas (250–255, 200–249, 100–199, 0–99). A construção "
-                    "por faixas é clássica (Regular Expressions Cookbook, citado no relatório); a máscara CIDR e a "
-                    "proibição de zeros à esquerda completam a ER.", 0.95),
+        slide_er("ER-04", "Endereço IPv4 com octetos de 0 a 255, sem zero à esquerda, e máscara CIDR opcional.",
+                 "Caue (~45 s). O octeto é dividido em faixas disjuntas (250–255, 200–249, 100–199, 0–99), construção "
+                 "clássica citada no relatório; a máscara CIDR e a proibição de zeros à esquerda completam a ER. "
+                 "Casos-limite: 0.0.0.0, 255.255.255.255, /0 e /32 aceitos; 256 e /33 rejeitados."),
         Slide("ER-04 — AFNε: quatro octetos e a máscara opcional", [
             Imagem(0.5, 1.0, 12.3, 2.0, DIAGRAMAS / "partes" / "ER-04_p1.png"),
             Imagem(0.5, 3.05, 12.3, 2.0, DIAGRAMAS / "partes" / "ER-04_p2.png"),
             Imagem(0.5, 5.1, 12.3, 1.85, DIAGRAMAS / "partes" / "ER-04_p3.png"),
-        ], "Caue (~30 s). Cada ⟨OCT⟩ abre 4 ramos por ε e os fecha em um estado comum antes do ponto. Na parte 3, "
-           "o desvio ε de q67 para o final é a máscara opcional (/⟨MASC⟩ | ε)."),
-        slide_testes_er("ER-04", "Caue (~30 s). Casos-limite: 0.0.0.0 e 255.255.255.255, /0 e /32 aceitos; 256 e /33 "
-                                 "rejeitados; zeros à esquerda rejeitados no octeto e na máscara."),
+        ], "Caue (~30 s). Cada ⟨OCT⟩ abre 4 ramos por ε e os fecha antes do ponto. Na parte 3, o desvio ε de q67 "
+           "para o final é a máscara opcional (/⟨MASC⟩ | ε)."),
 
-        slide_ficha("ER-05", "Registro de evento: data válida, hora, severidade, dispositivo e mensagem.",
-                    "César (~40 s). Apresentar as definições regulares: ⟨DATA⟩, ⟨HORA⟩, ⟨SEV⟩, ⟨ID⟩ (reuso da ER-01) "
-                    "e ⟨MSG⟩. É a única ER com fecho de Kleene.", 2.25),
-        Slide("ER-05 — AFNε da data e da hora", [
-            Imagem(0.5, 1.0, 12.3, 3.45, DIAGRAMAS / "partes" / "ER-05_p1.png"),
-            Imagem(0.5, 4.5, 12.3, 2.45, DIAGRAMAS / "partes" / "ER-05_p2.png"),
-        ], "César (~40 s). A data aceita o dia certo de cada mês: três casos na união (01–29 em qualquer mês, "
-           "30 exceto fevereiro, 31 só nos meses de 31 dias). Validar dia por mês É regular, porque o conjunto de "
-           "datas é finito. A parte 2 mostra a hora (00–23), os minutos/segundos (00–59) e a severidade."),
-        Slide("ER-05 — a mensagem usa fecho de Kleene", [
-            Texto(0.5, 1.05, 12.3, 0.9, [
-                "⟨PAL⟩ = [A-Za-z0-9_.-] [A-Za-z0-9_.-]*        ⟨MSG⟩ = ⟨PAL⟩ (⎵ ⟨PAL⟩)*",
-                'No código:  [A-Za-z0-9_.-]+( [A-Za-z0-9_.-]+)*'], 15, codigo=True, fundo=AZUL_CLARO),
-            Imagem(0.5, 2.1, 12.3, 3.3, DIAGRAMAS / "partes" / "ER-05_p4.png"),
-            Texto(0.5, 5.55, 12.3, 1.5, [
-                "• Laço interno: o fecho de [A-Za-z0-9_.-]* (q104 ↔ q106). Laço externo: (⎵⟨PAL⟩)*, que volta de q112 para q107.",
-                "• Por causa do fecho, L₅ é a única linguagem INFINITA do projeto; as outras quatro são finitas.",
-                "• Rejeita mensagem vazia, dois espaços seguidos e símbolos fora de Σ₅ (ex.: pressão, com ã).",
-            ], 16),
-        ], "César (~40 s). Mostrar os dois laços do fecho de Kleene no AFNε. Explicar por que a ER-05 é infinita "
-           "(há um ciclo que lê símbolos em um caminho até o estado final) e as outras são finitas."),
-        slide_testes_er("ER-05", "César (~30 s). Casos-limite de data: 29/02, 30/04 e 31/07 aceitos; 30/02, 31/04, "
-                                 "mês 13 e hora 24 rejeitados. Mensagem vazia e com acento rejeitadas."),
+        slide_er("ER-05", "Registro de evento: data válida, hora, severidade, dispositivo e mensagem.",
+                 "César (~45 s). Definições regulares: ⟨DATA⟩, ⟨HORA⟩, ⟨SEV⟩, ⟨ID⟩ (reuso da ER-01) e ⟨MSG⟩. "
+                 "Casos-limite de data: 29/02, 30/04 e 31/07 aceitos; 30/02, 31/04, mês 13 e hora 24 rejeitados."),
+        Slide("ER-05 — AFNε: a data e a mensagem", [
+            Imagem(0.5, 0.95, 12.3, 2.95, DIAGRAMAS / "partes" / "ER-05_p1.png"),
+            Imagem(0.5, 3.95, 12.3, 2.45, DIAGRAMAS / "partes" / "ER-05_p4.png"),
+            Texto(0.5, 6.45, 12.35, 0.6, [
+                "Parte 1: dia válido para cada mês (união de 3 casos). Parte 4: fecho de Kleene — laço interno de ⟨PAL⟩ "
+                "(q104 ↔ q106) e externo (⎵⟨PAL⟩)* (q112 → q107), por isso L₅ é infinita. As partes 2 e 3 (hora, "
+                "severidade e ID) estão no relatório."], 12, CINZA),
+        ], "César (~1 min). A data aceita o dia certo de cada mês: validar dia por mês É regular, porque o conjunto "
+           "de datas é finito. Na mensagem, os dois laços do fecho de Kleene tornam L₅ a única linguagem infinita."),
 
-        Slide("Como garantimos que é a mesma linguagem", [
-            Texto(0.5, 1.1, 6.4, 5.6, [
-                "**1. Código → AFNε (Thompson)",
-                "O AFNε é construído a partir do padrão exato do código.",
-                "**2. ER formal ≡ código: prova",
-                "Busca em largura sobre o produto dos dois AFNε (construção de subconjuntos). Nenhuma cadeia distingue as linguagens.",
-                "**3. Arquivo .jff ≡ código: prova",
-                "O .jff é lido de volta e comparado pelo mesmo algoritmo.",
-                "**4. Executado no próprio JFLAP 7.1",
-                "80 de 80 cadeias de teste com o resultado esperado.",
-            ], 16),
-            Tabela(7.2, 1.2, 5.65, [
-                ["Verificação", "Resultado"],
-                ["ER formal ≡ código", "5/5 provadas"],
-                [".jff ≡ código", "5/5 provadas"],
-                ["AFNε × re (aleatórias)", "10.000 cadeias, 0 divergências"],
-                ["JFLAP 7.1", "80/80"],
-                ["Linguagens disjuntas", "interseções vazias"],
-            ], [2.9, 2.75], 14, 0.45),
-            Texto(7.2, 4.3, 5.65, 1.3, [
-                "Achado: o JFLAP 7.1 trata rótulos com '[' como intervalo ([a-z]) e falha com o símbolo '['. "
-                "Por isso a severidade é INFO, não [INFO]: o .jff reconhece a linguagem exata, sem símbolos substitutos."],
-                13, CINZA, fundo=AZUL_CLARO),
-        ], "Caue (~1 min 30 s). Esta é a regra central do guia. Explicar que não comparamos só alguns exemplos: "
-           "o algoritmo percorre todos os pares de estados alcançáveis, então é uma prova de equivalência."),
+        slide_verificacao(),
 
         Slide("Demonstração", [
             Texto(0.5, 1.05, 12.35, 1.45, [
@@ -340,51 +304,35 @@ def slides() -> list[Slide]:
                 "JFLAP: automatos/jflap/ER-03.jff → Input › Multiple Run → Load Inputs (entradas/ER-03.txt)",
             ], 14, codigo=True, fundo=AZUL_CLARO),
             Texto(0.5, 2.75, 12.35, 4.2, saida_demonstracao(), 13, codigo=True),
-        ], "César (~2 min). Rodar ao vivo: lote com o turno da caldeira, um pacote rejeitado com o apontador "
-           "de coluna, a simulação passo a passo e um Multiple Run no JFLAP. Se o professor pedir uma cadeia nova, "
-           "usar --pacote ou o modo interativo (opção 2)."),
+        ], "César (~1 min 30 s). Rodar ao vivo: lote com o turno da caldeira, um pacote rejeitado com o apontador "
+           "de coluna e a simulação passo a passo (uma cadeia aceita e uma rejeitada). Se o professor pedir uma "
+           "cadeia nova, usar --pacote ou o modo interativo (opção 2)."),
 
-        slide_testes(),
-
-        Slide("Limitações e possíveis melhorias", [
-            Texto(0.5, 1.1, 6.1, 5.6, [
+        Slide("Limitações, contribuições e uso de IA", [
+            Texto(0.5, 1.05, 6.1, 2.6, [
                 "**Limitações (falsos resultados)",
-                "• A validação é léxica: um ID bem formado passa mesmo se o dispositivo não existir.",
-                "• −0C é aceito; uma leitura real acima de 199.9 °C é bloqueada.",
-                "• 29/02 é aceito em qualquer ano.",
-                "• A mensagem do log não aceita acentos.",
-            ], 20),
-            Texto(6.85, 1.1, 6.0, 5.6, [
+                "• Validação léxica: um ID bem formado passa mesmo se o dispositivo não existir.",
+                "• −0C é aceito; uma leitura real acima de 199.9 °C é bloqueada; 29/02 vale em qualquer ano.",
+            ], 15),
+            Texto(6.85, 1.05, 6.0, 2.6, [
                 "**Melhorias",
-                "• Ano bissexto: também é regular (anos de 4 dígitos formam um conjunto finito), mas o AFNε cresceria muito.",
-                "• Faixas configuráveis por tipo de sensor.",
-                "• Leitura contínua de porta serial ou socket.",
-                "• Minimizar o AFD (Hopcroft) e comparar com o AFNε de Thompson.",
-            ], 20),
-        ], "César (~40 s). Separar limitação léxica de limitação semântica: tudo o que a ER promete, ela cumpre; "
-           "o que depende do significado do dado fica fora."),
-
-        Slide("Contribuições e uso de IA", [
-            Tabela(0.5, 1.15, 12.35, [
+                "• Ano bissexto (também é regular, mas o AFNε cresceria muito).",
+                "• Faixas configuráveis por sensor; leitura contínua de porta serial.",
+            ], 15),
+            Tabela(0.5, 3.0, 12.35, [
                 ["Integrante", "Contribuições"],
                 ["Augusto Rodrigues", "ER-01 e ER-02 (fichas, AFNε, testes); diagnóstico de falhas"],
                 ["Caue Jadão", "ER-03 e ER-04; revisão geral, verificação de equivalência, relatório e repositório"],
                 ["César Augusto", "ER-05; modo lote, relatório de conformidade, exportação e apresentação"],
-            ], [3.2, 9.15], 15, 0.5),
-            Texto(0.5, 3.6, 12.35, 3.0, [
+            ], [3.0, 9.35], 14, 0.42),
+            Texto(0.5, 4.95, 12.35, 1.8, [
                 "**Uso de IA (declarado no relatório e no README)",
-                "• Antigravity: versão inicial do código, dos testes e dos primeiros .jff.",
-                "• Claude (Anthropic): revisão das ERs e da notação formal, construção de Thompson, verificação de "
-                "equivalência, testes, relatório e slides.",
-                "• As decisões de projeto são da equipe; todos compreendem, explicam e modificam o conteúdo.",
-            ], 17),
-        ], "Todos (~30 s). Cada integrante diz em uma frase o que fez."),
-
-        Slide("", [
-            Texto(0.8, 2.6, 11.7, 1.0, ["Obrigado!"], 44, "FFFFFF"),
-            Texto(0.8, 3.7, 11.7, 0.6, ["Perguntas?"], 26, "D6E2F0"),
-            Texto(0.8, 6.4, 11.7, 0.4, ["github.com/cauebarroso/Auditor-de-sensores-industriais-com-express-es-regulares"], 13, "AFC3DB"),
-        ], "Encerramento. Deixar o terminal aberto no modo interativo para testar cadeias pedidas pelo professor.", capa=True),
+                "Antigravity: versão inicial do código, dos testes e dos primeiros .jff. Claude (Anthropic): revisão das "
+                "ERs e da notação formal, construção de Thompson, verificação de equivalência, testes, relatório e slides. "
+                "As decisões de projeto são da equipe; todos compreendem, explicam e modificam o conteúdo.",
+            ], 15),
+        ], "Todos (~1 min). Cada integrante diz em uma frase o que fez. Encerrar abrindo para perguntas, com o "
+           "terminal no modo interativo para testar cadeias pedidas pelo professor."),
     ]
 
 

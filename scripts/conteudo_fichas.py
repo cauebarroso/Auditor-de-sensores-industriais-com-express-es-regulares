@@ -61,6 +61,15 @@ FONTES = {
              "severidade, ID do dispositivo e mensagem do protocolo.",
 }
 
+# Descrição curta da linguagem para os slides (a completa está em src/expressoes.py)
+LINGUAGEM_CURTA = {
+    "ER-01": "L₁: SEN ou ATU, hífen, 2 ou 3 letras maiúsculas, hífen e 4 dígitos. Finita (365.040.000 cadeias).",
+    "ER-02": "L₂: ID de sensor, ':' e uma medição: TEMP de −199.9 a 199.9 C, UMID de 0 a 100% ou PRES de 850 a 1099 hPa. Finita.",
+    "ER-03": "L₃: 'CMD', ID de atuador e uma ação: LIGAR, DESLIGAR, ABRIR, FECHAR ou AJUSTAR de 0 a 100%. Finita.",
+    "ER-04": "L₄: quatro octetos de 0 a 255 sem zero à esquerda e máscara opcional de /0 a /32. Finita.",
+    "ER-05": "L₅: data com dia válido para o mês, hora, severidade, ID e mensagem de palavras separadas por um espaço. Infinita.",
+}
+
 # Resumo da equivalência para os slides: (no código, na ER formal, operador)
 OPERADORES = {
     "ER-01": [

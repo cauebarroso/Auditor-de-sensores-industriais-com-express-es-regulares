@@ -2,19 +2,21 @@
 
 As falas de cada slide também estão nas **anotações** do `Apresentacao.pptx`.
 
-Cada ER tem a ficha completa do guia nos slides: **ficha** (finalidade, Σ, ER formal, sintaxe no
-código e operadores), **AFNε** e **linguagem L + as 16 cadeias de teste**. Nos slides de testes, não
-leia a tabela inteira: diga "as 16 cadeias estão aqui" e destaque um ou dois casos-limite.
+São 15 slides. Cada ER tem um slide com a ficha completa do guia (finalidade, linguagem L, Σ,
+ER formal, sintaxe no código, operadores e 6 cadeias aceitas + 6 rejeitadas, com os casos-limite
+marcados com ★) e, nas ERs 02 a 05, um slide só com o AFNε. A ER-01 é pequena e o AFNε cabe no
+rodapé da própria ficha. Não leia a tabela de testes: destaque um ou dois casos-limite. As 16 cadeias
+de cada ER estão no relatório.
 
 | Slides | Quem | Tempo | Conteúdo |
 | :-- | :-- | :-- | :-- |
-| 1–4 | Augusto | 1 min 30 s | Problema, entradas/processamento/saídas, notação formal × código |
-| 5–9 | Augusto | 2 min 30 s | ER-01 (ficha, AFNε e testes) e ER-02 (ficha, AFNε, testes) |
-| 10–15 | Caue | 2 min 30 s | ER-03 e ER-04 (ficha, AFNε, testes) |
-| 16–19 | César | 2 min | ER-05: ficha, data válida por mês, fecho de Kleene na mensagem, testes |
-| 20 | Caue | 1 min | Como provamos que é a mesma linguagem (Thompson, equivalência, JFLAP) |
-| 21 | César | 1 min 30 s | Demonstração ao vivo |
-| 22–25 | Caue, César e todos | 1 min | Resultados dos testes, limitações, contribuições e uso de IA |
+| 1–3 | Augusto | 2 min | Problema, solução, entradas/saídas e notação formal × código |
+| 4–6 | Augusto | 2 min 15 s | ER-01 (ficha e AFNε) e ER-02 (ficha, AFNε) |
+| 7–10 | Caue | 2 min 30 s | ER-03 e ER-04 (ficha, AFNε) |
+| 11–12 | César | 1 min 45 s | ER-05: ficha, data válida por mês e fecho de Kleene na mensagem |
+| 13 | Caue | 1 min | Como provamos que é a mesma linguagem e resultados dos testes |
+| 14 | César | 1 min 30 s | Demonstração ao vivo |
+| 15 | Todos | 1 min | Limitações, contribuições de cada integrante e uso de IA |
 
 ## Antes de começar
 
@@ -26,7 +28,7 @@ python -m pytest -q                      # deve mostrar 319 passed
 Deixe abertos: um terminal na pasta do projeto, o JFLAP com `automatos/jflap/ER-03.jff` e o
 diagrama `automatos/diagramas/ER-05.svg` no navegador (dá para dar zoom).
 
-## Demonstração (slide 21)
+## Demonstração (slide 14)
 
 1. **Lote:** `python src/auditor.py dados/turno_caldeira.txt` → mostrar a taxa de conformidade, a
    telemetria extraída e os corrompidos. Abrir o filtro **6** (corrompidos com diagnóstico).
