@@ -51,6 +51,50 @@ EQUIVALENCIAS = {
     ],
 }
 
+# Construções inspiradas em fontes externas (o enunciado exige referenciá-las)
+FONTES = {
+    "ER-04": "A divisão do octeto em faixas disjuntas (250–255, 200–249, 100–199, 0–99) é uma construção clássica, "
+             "descrita em Goyvaerts e Levithan (2012). A equipe acrescentou a máscara CIDR, a proibição de zeros à "
+             "esquerda na máscara, a ER formal e o AFNε.",
+    "ER-05": "Validar o dia de acordo com o mês por uma união de casos é a abordagem descrita em Goyvaerts e "
+             "Levithan (2012) para datas; aqui ela foi adaptada ao formato ISO 8601 e combinada com hora, "
+             "severidade, ID do dispositivo e mensagem do protocolo.",
+}
+
+# Resumo da equivalência para os slides: (no código, na ER formal, operador)
+OPERADORES = {
+    "ER-01": [
+        ("(SEN|ATU)", "(SEN | ATU)", "União"),
+        ("[A-Z]", "(A | B | … | Z)", "Classe finita"),
+        ("[A-Z]{2,3}", "[A-Z][A-Z]([A-Z] | ε)", "Repetição limitada: rr | rrr"),
+        ("[0-9]{4}", "[0-9][0-9][0-9][0-9]", "Repetição exata"),
+    ],
+    "ER-02": [
+        ("-?", "(- | ε)", "Opcionalidade"),
+        ("[1-9]?[0-9]", "([1-9] | ε)[0-9]", "0 a 99 sem zero à esquerda"),
+        ("(\\.[0-9])?", ".[0-9] | ε", "Escape do ponto + opcional"),
+        ("(TEMP=…|UMID=…|PRES=…)", "⟨TEMP⟩ | ⟨UMID⟩ | ⟨PRES⟩", "União de três ramos"),
+    ],
+    "ER-03": [
+        (" (espaço)", "⎵", "Símbolo de Σ₃ (não usamos \\s)"),
+        ("(LIGAR|…|AJUSTAR …)", "LIGAR | … | AJUSTAR ⎵ ⟨PCT⟩ %", "União de cinco ações"),
+        ("(100|[1-9]?[0-9])", "100 | ([1-9] | ε)[0-9]", "União: 0 a 100"),
+        ("{2,3}  {4}", "rr(r | ε)  rrrr", "Repetições do ID"),
+    ],
+    "ER-04": [
+        ("25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]", "⟨OCT⟩", "União de 4 faixas disjuntas"),
+        ("(…\\.){3}", "⟨OCT⟩.⟨OCT⟩.⟨OCT⟩.", "Repetição exata de grupo"),
+        ("\\.", ".", "Escape: ponto literal"),
+        ("(/(3[0-2]|[12]?[0-9]))?", "(/⟨MASC⟩ | ε)", "Máscara opcional"),
+    ],
+    "ER-05": [
+        ("(…-(0[1-9]|[12][0-9])|…-30|…-31)", "três casos em ⟨DATA⟩", "União: dia válido por mês"),
+        ("(INFO|WARN|ERROR|CRIT)", "⟨SEV⟩", "União"),
+        ("[A-Za-z0-9_.-]+", "⟨PAL⟩ = c c*", "Fecho positivo: r+ = rr*"),
+        ("( [A-Za-z0-9_.-]+)*", "(⎵ ⟨PAL⟩)*", "Fecho de Kleene"),
+    ],
+}
+
 LIMITES = {
     "ER-01": [
         "A validação é léxica: um ID bem formado é aceito mesmo que o dispositivo não exista no cadastro da planta.",

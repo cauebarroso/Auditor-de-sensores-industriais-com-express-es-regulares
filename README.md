@@ -89,7 +89,7 @@ arquivo binário, opção de menu inválida) são tratadas com mensagens claras,
 python -m pytest
 ```
 
-São **314 testes** em `tests/`:
+São **319 testes** em `tests/`:
 
 | Arquivo | O que verifica |
 | :-- | :-- |
@@ -114,8 +114,13 @@ A verificação também pode ser feita sem interface gráfica, com o motor do pr
 python scripts/verificar_jflap.py        # resultado atual: 80/80 cadeias conferem
 ```
 
-> O JFLAP 7.1 interpreta rótulos que contêm `[` como intervalo (`[a-z]`) e falha com o símbolo `[`.
-> Por isso a severidade do log é escrita sem colchetes (`INFO`, não `[INFO]`).
+O mesmo script salva em [`automatos/jflap/imagens/`](automatos/jflap/imagens/) cada `.jff` desenhado
+pelo próprio JFLAP (no JFLAP, ε aparece como λ e transições paralelas aparecem empilhadas).
+
+> Dois comportamentos do JFLAP 7.1 definiram o formato dos arquivos: rótulos que contêm `[` são
+> interpretados como intervalo (`[a-z]`) e o símbolo `[` sozinho derruba o simulador — por isso a
+> severidade do log é `INFO`, não `[INFO]`; e, depois de uma transição com intervalo, o simulador não
+> aplica o fecho-ε — por isso cada símbolo tem a sua própria transição em vez de rótulos como `[A-Z]`.
 
 ## Estrutura do repositório
 
@@ -132,11 +137,12 @@ python scripts/verificar_jflap.py        # resultado atual: 80/80 cadeias confer
 ├── tests/                   # casos de teste e suítes pytest
 ├── dados/                   # dados de exemplo (inclui um arquivo vazio para teste)
 ├── automatos/
-│   ├── jflap/               # .jff, entradas para Multiple Run e resultado no JFLAP
+│   ├── jflap/               # .jff, entradas para Multiple Run, resultado e imagens no JFLAP
 │   └── diagramas/           # SVG/PNG/DOT dos AFNε (e partes/, para páginas e slides)
 ├── scripts/                 # geradores de AFNε, relatório e slides; verificação no JFLAP
 ├── docs/                    # relatório técnico, apresentação e roteiro
-├── requirements.txt
+├── requirements.txt         # dependência dos testes (pytest)
+├── requirements-docs.txt    # dependências dos geradores de documentos
 └── pytest.ini
 ```
 
@@ -152,8 +158,9 @@ python scripts/gerar_relatorio.py       # docs/Relatorio_Tecnico.md e .pdf
 python scripts/gerar_apresentacao.py    # docs/Apresentacao.pptx e .pdf
 ```
 
-Os geradores de documentos usam `pip install markdown python-pptx pillow`, o Graphviz (`dot`) para as
-imagens e o Microsoft Edge ou o Google Chrome para imprimir os PDFs.
+Os geradores de documentos usam as bibliotecas de `requirements-docs.txt`
+(`pip install -r requirements-docs.txt`), o Graphviz (`dot`) para as imagens e o Microsoft Edge ou o
+Google Chrome para imprimir os PDFs. A aplicação em si não precisa de nada disso.
 
 ## Contribuições dos integrantes
 

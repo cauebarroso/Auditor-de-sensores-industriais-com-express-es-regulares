@@ -14,13 +14,18 @@ import java.nio.charset.StandardCharsets;
  */
 public class TestaJFLAP {
     public static void main(String[] args) throws Exception {
+        // O simulador do JFLAP imprime mensagens de depuração ao expandir
+        // rótulos de intervalo ([A-Z]); elas são descartadas.
+        System.setOut(new PrintStream(OutputStream.nullOutputStream()));
+
         Automaton automato = (Automaton) new XMLCodec().decode(new File(args[0]), null);
-        try (BufferedReader entradas = new BufferedReader(
+        try (PrintStream saida = new PrintStream(new FileOutputStream(FileDescriptor.out), true, "UTF-8");
+             BufferedReader entradas = new BufferedReader(
                 new InputStreamReader(new FileInputStream(args[1]), StandardCharsets.UTF_8))) {
             String cadeia;
             while ((cadeia = entradas.readLine()) != null) {
                 FSAStepWithClosureSimulator simulador = new FSAStepWithClosureSimulator(automato);
-                System.out.println(simulador.simulateInput(cadeia) ? "ACEITA" : "REJEITA");
+                saida.println(simulador.simulateInput(cadeia) ? "ACEITA" : "REJEITA");
             }
         }
     }

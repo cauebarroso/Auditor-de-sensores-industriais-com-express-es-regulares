@@ -301,7 +301,7 @@ O diagrama foi dividido em 2 partes nos estados de articulação (estados por on
 | 10 | `CMD SEN-VLV-0420 LIGAR` | ❌ rejeitada | Sensor (SEN) não recebe comandos |
 | 11 | `CMD ATU-VLV-0420 PAUSAR` | ❌ rejeitada | PAUSAR não pertence à união de ações |
 | 12 | `CMD ATU-VLV-0420 AJUSTAR %` | ❌ rejeitada | Valor percentual ausente |
-| 13 | `CMD⎵ATU-VLV-0420⎵LIGAR⎵` | ❌ rejeitada | Espaço extra no final **(caso-limite)** |
+| 13 | `CMD ATU-VLV-0420 LIGAR⎵` | ❌ rejeitada | Espaço extra no final **(caso-limite)** |
 | 14 | `CMD ATU-VLV-0420 AJUSTAR 050%` | ❌ rejeitada | Zero à esquerda não é permitido |
 | 15 | `cmd ATU-VLV-0420 LIGAR` | ❌ rejeitada | Prefixo em minúsculas |
 | 16 | `CMD ATU-VLV-0420 AJUSTAR 50` | ❌ rejeitada | Falta o símbolo % |
@@ -346,6 +346,8 @@ PADRAO_ER_04 = r"((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[
 | `(…\.){3}` | `⟨OCT⟩.⟨OCT⟩.⟨OCT⟩.` | Repetição exata de um grupo: 3 cópias de (octeto seguido de ponto). |
 | `\.` | `.` | Escape: o ponto do código vira o símbolo literal '.' do alfabeto. |
 | `(/(3[0-2]\|[12]?[0-9]))?` | `(/⟨MASC⟩ \| ε)` | Máscara CIDR opcional de /0 a /32. |
+
+**Fonte.** A divisão do octeto em faixas disjuntas (250–255, 200–249, 100–199, 0–99) é uma construção clássica, descrita em Goyvaerts e Levithan (2012). A equipe acrescentou a máscara CIDR, a proibição de zeros à esquerda na máscara, a ER formal e o AFNε.
 
 **AFNε** — construído pela construção de Thompson a partir do padrão do código:
 **76 estados** (inicial `q0`, final `q69`), **94 transições**,
@@ -431,6 +433,8 @@ PADRAO_ER_05 = r"[0-9]{4}-((0[1-9]|1[0-2])-(0[1-9]|[12][0-9])|(0[13-9]|1[0-2])-3
 | `[A-Za-z0-9_.-]+` | `⟨PAL⟩ = c c*` | Fecho positivo: r+ = rr*. Dentro da classe, '.' é literal e o '-' final também. |
 | `( [A-Za-z0-9_.-]+)*` | `(⎵⟨PAL⟩)*` | Fecho de Kleene: zero ou mais palavras adicionais, cada uma precedida de um espaço. |
 
+**Fonte.** Validar o dia de acordo com o mês por uma união de casos é a abordagem descrita em Goyvaerts e Levithan (2012) para datas; aqui ela foi adaptada ao formato ISO 8601 e combinada com hora, severidade, ID do dispositivo e mensagem do protocolo.
+
 **AFNε** — construído pela construção de Thompson a partir do padrão do código:
 **114 estados** (inicial `q0`, final `q108`), **131 transições**,
 das quais **51 são movimentos ε** (setas tracejadas). Rótulos como `[0-9]` resumem
@@ -464,7 +468,7 @@ O diagrama foi dividido em 4 partes nos estados de articulação (estados por on
 | 11 | `2026-04-31T10:00:00 INFO SEN-TM-0001: ok` | ❌ rejeitada | 31 de abril não existe **(caso-limite)** |
 | 12 | `2026-09-30T24:00:00 INFO SEN-TM-0001: ok` | ❌ rejeitada | Hora 24 (máximo 23) **(caso-limite)** |
 | 13 | `2026-09-30T08:15:00 DEBUG SEN-TM-0001: ok` | ❌ rejeitada | DEBUG não pertence à união de severidades |
-| 14 | `2026-09-30T08:15:00⎵INFO⎵SEN-TM-0001:⎵` | ❌ rejeitada | Mensagem vazia **(caso-limite)** |
+| 14 | `2026-09-30T08:15:00 INFO SEN-TM-0001:⎵` | ❌ rejeitada | Mensagem vazia **(caso-limite)** |
 | 15 | `2026-09-30T08:15:00 INFO SEN-TM-0001: leitura  dupla` | ❌ rejeitada | Dois espaços seguidos na mensagem |
 | 16 | `2026-09-30T08:15:00 INFO SEN-TM-0001: pressão alta` | ❌ rejeitada | 'ã' não pertence a Σ₅ |
 
@@ -508,10 +512,20 @@ linguagem**. Em vez de conferir isso manualmente, o projeto verifica a regra por
 As cinco linguagens são **disjuntas** (a interseção de cada par de AFNε é vazia, também verificada
 por busca no produto). Por isso cada pacote válido pertence a exatamente uma categoria.
 
-**Observação sobre o JFLAP 7.1.** Durante a verificação descobrimos que o simulador do JFLAP 7.1
-interpreta qualquer rótulo que contenha `[` como um intervalo no estilo `[a-z]` e lança uma exceção
-quando o rótulo é apenas `[`. Por isso a severidade do log é escrita sem colchetes (`INFO`, não
-`[INFO]`): assim o `.jff` reconhece exatamente a mesma linguagem do código, sem símbolos substitutos.
+**Observações sobre o JFLAP 7.1.** A execução no motor do JFLAP revelou dois comportamentos que
+orientaram o formato dos arquivos:
+
+- O simulador interpreta qualquer rótulo que contenha `[` como um intervalo no estilo `[a-z]` e lança
+  uma exceção quando o rótulo é apenas `[`. Por isso a severidade do log é escrita sem colchetes
+  (`INFO`, não `[INFO]`): o `.jff` reconhece exatamente a mesma linguagem do código, sem símbolos
+  substitutos.
+- Rótulos de intervalo como `[A-Z]` deixariam o desenho mais limpo, mas, depois de uma transição desse
+  tipo, o simulador do JFLAP 7.1 **não aplica o fecho-ε**: testamos uma versão com intervalos e ela
+  rejeitou 35 das 40 cadeias que deveriam ser aceitas (por exemplo, todo ID com modelo de 2 letras,
+  que depende do desvio ε da terceira letra). Por isso os `.jff` usam uma transição por símbolo, o
+  formato básico que funciona em qualquer versão do JFLAP e em todas as suas operações.
+
+A pasta `automatos/jflap/imagens/` mostra cada `.jff` desenhado pelo próprio componente gráfico do JFLAP.
 
 <div class="quebra"></div>
 
@@ -587,12 +601,12 @@ Cada ER tem **8 cadeias aceitas e 8 rejeitadas** (mínimo exigido: 6 + 6), com v
 extremos das faixas numéricas (0 e 100%, 850 e 1099 hPa, octetos 0 e 255, máscaras /0 e /32),
 datas na fronteira (29/02, 30/04, 31/07, 30/02, 31/04), menor e maior cadeia de L₁ e a cadeia vazia ε.
 
-Execução: `python -m pytest` → **314 passed**.
+Execução: `python -m pytest` → **319 passed**.
 
 | Arquivo | Testes | O que verifica |
 | :-- | --: | :-- |
 | `tests/test_aplicacao.py` | 66 | Entradas vazias e inválidas, diagnósticos, coluna do erro, robustez (3.000 entradas aleatórias), arquivos (inexistente, vazio, pasta, binário), extração, exportação, CLI e modo interativo. |
-| `tests/test_automatos.py` | 118 | AFNε × `re` (casos e 10.000 cadeias aleatórias), provas ER formal ≡ código e `.jff` ≡ código, linguagens disjuntas, linguagem finita/infinita e rejeição de recursos não regulares. |
+| `tests/test_automatos.py` | 123 | AFNε × `re` (casos e 10.000 cadeias aleatórias), provas ER formal ≡ código e `.jff` ≡ código, linguagens disjuntas, linguagem finita/infinita e rejeição de recursos não regulares. |
 | `tests/test_expressoes.py` | 130 | Cadeias aceitas/rejeitadas por `re.fullmatch`, requisitos mínimos (6 + 6 e caso-limite), categoria única e ausência de atalhos proibidos. |
 
 No JFLAP 7.1 (Input › Multiple Run com os arquivos de `automatos/jflap/entradas/`, ou automaticamente
@@ -727,7 +741,11 @@ explicam e conseguem modificar o código, as expressões regulares e os autômat
 - SIPSER, M. *Introdução à Teoria da Computação*. 2. ed. São Paulo: Cengage Learning, 2007.
 - THOMPSON, K. Programming Techniques: Regular expression search algorithm. *Communications of the ACM*, v. 11, n. 6, p. 419–422, 1968.
 - AHO, A. V.; LAM, M. S.; SETHI, R.; ULLMAN, J. D. *Compiladores: princípios, técnicas e ferramentas*. 2. ed. São Paulo: Pearson, 2008 (definições regulares, seção 3.3).
+- GOYVAERTS, J.; LEVITHAN, S. *Regular Expressions Cookbook*. 2. ed. Sebastopol: O'Reilly, 2012 (receitas de validação de datas e de endereços IPv4).
 - PYTHON SOFTWARE FOUNDATION. *re — Regular expression operations*. Disponível em: <https://docs.python.org/3/library/re.html>.
 - RODGER, S. H. *JFLAP 7.1*. Duke University. Disponível em: <https://www.jflap.org>.
+- GANSNER, E. R.; NORTH, S. C. An open graph visualization system and its applications to software engineering. *Software: Practice and Experience*, v. 30, n. 11, p. 1203–1233, 2000 (Graphviz, usado nos diagramas). Disponível em: <https://graphviz.org>.
+- PYTEST DEVELOPMENT TEAM. *pytest*. Disponível em: <https://docs.pytest.org>.
+- Bibliotecas usadas só para gerar os documentos: *Python-Markdown* (<https://python-markdown.github.io>), *python-pptx* (<https://python-pptx.readthedocs.io>) e *Pillow* (<https://python-pillow.org>).
 - ISO 8601-1:2019 — *Date and time — Representations for information interchange*.
 - POSTEL, J. *RFC 791 — Internet Protocol*, 1981; FULLER, V.; LI, T. *RFC 4632 — Classless Inter-domain Routing (CIDR)*, 2006.

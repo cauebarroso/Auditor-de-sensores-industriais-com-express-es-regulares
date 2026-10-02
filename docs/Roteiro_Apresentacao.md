@@ -2,27 +2,31 @@
 
 As falas de cada slide também estão nas **anotações** do `Apresentacao.pptx`.
 
+Cada ER tem a ficha completa do guia nos slides: **ficha** (finalidade, Σ, ER formal, sintaxe no
+código e operadores), **AFNε** e **linguagem L + as 16 cadeias de teste**. Nos slides de testes, não
+leia a tabela inteira: diga "as 16 cadeias estão aqui" e destaque um ou dois casos-limite.
+
 | Slides | Quem | Tempo | Conteúdo |
 | :-- | :-- | :-- | :-- |
-| 1–4 | Augusto | 2 min 30 s | Problema, entradas/processamento/saídas, notação formal × código |
-| 5–7 | Augusto | 2 min | ER-01 e ER-02 (ER formal, código, AFNε) |
-| 8–9 | Caue | 2 min | ER-03 e ER-04 |
-| 10–12 | César | 2 min 30 s | ER-05: data válida por mês e fecho de Kleene na mensagem |
-| 13 | Caue | 1 min 30 s | Como provamos que é a mesma linguagem (Thompson, equivalência, JFLAP) |
-| 14 | César | 2 min | Demonstração ao vivo |
-| 15–17 | Caue e César | 1 min 30 s | Testes, limitações, contribuições e uso de IA |
+| 1–4 | Augusto | 1 min 30 s | Problema, entradas/processamento/saídas, notação formal × código |
+| 5–9 | Augusto | 2 min 30 s | ER-01 (ficha, AFNε e testes) e ER-02 (ficha, AFNε, testes) |
+| 10–15 | Caue | 2 min 30 s | ER-03 e ER-04 (ficha, AFNε, testes) |
+| 16–19 | César | 2 min | ER-05: ficha, data válida por mês, fecho de Kleene na mensagem, testes |
+| 20 | Caue | 1 min | Como provamos que é a mesma linguagem (Thompson, equivalência, JFLAP) |
+| 21 | César | 1 min 30 s | Demonstração ao vivo |
+| 22–25 | Caue, César e todos | 1 min | Resultados dos testes, limitações, contribuições e uso de IA |
 
 ## Antes de começar
 
 ```bash
 cd Auditor-de-sensores-industriais-com-express-es-regulares
-python -m pytest -q                      # deve mostrar 314 passed
+python -m pytest -q                      # deve mostrar 319 passed
 ```
 
 Deixe abertos: um terminal na pasta do projeto, o JFLAP com `automatos/jflap/ER-03.jff` e o
 diagrama `automatos/diagramas/ER-05.svg` no navegador (dá para dar zoom).
 
-## Demonstração (slide 14)
+## Demonstração (slide 21)
 
 1. **Lote:** `python src/auditor.py dados/turno_caldeira.txt` → mostrar a taxa de conformidade, a
    telemetria extraída e os corrompidos. Abrir o filtro **6** (corrompidos com diagnóstico).
@@ -74,14 +78,38 @@ o alfabeto. O nosso analisador rejeita `\d`, `\w`, `\s` e o ponto curinga.
 O JFLAP 7.1 trata rótulos com `[` como intervalo e falha com o símbolo `[`. Sem colchetes, o `.jff`
 reconhece exatamente a linguagem do código, sem símbolos substitutos.
 
+**Por que o `.jff` tem tantas transições (26 para `[A-Z]`) em vez de um rótulo `[A-Z]`?**
+O JFLAP 7.1 até aceita rótulos de intervalo, mas depois de uma transição desse tipo o simulador não
+aplica o fecho-ε. Testamos: a versão com intervalos rejeitou 35 das 40 cadeias que deveriam ser
+aceitas. Com um símbolo por transição, o `.jff` funciona em qualquer versão e dá 80/80.
+
 ## Se o professor pedir uma alteração ao vivo
 
-Exemplo: "aceite modelos com 2 a 4 letras na ER-01".
+Exemplo: "aceite modelos com 2 a 4 letras na ER-01" (procedimento testado).
 
-1. Em `src/expressoes.py`, troque `[A-Z]{2,3}` por `[A-Z]{2,4}` em `PADRAO_ER_01` e ajuste a ER formal
-   em `DEF_ID`: `[A-Z][A-Z]([A-Z] | ε)([A-Z] | ε)`. Para mudar só a ER-01, crie uma definição separada
-   em vez de alterar `DEF_ID`, que também é usada pela ER-05.
-2. Rode `python -m pytest`. Os testes mostram o que mudou (ex.: `SEN-ABCD-1234` passa a ser aceita), e
-   o teste de equivalência confirma que a ER formal acompanha o código.
-3. Atualize o caso em `tests/casos_teste.py` e rode `python scripts/gerar_automatos.py` para gerar o
-   novo `.jff` e o novo diagrama.
+1. Em `src/expressoes.py`, troque `[A-Z]{2,3}` por `[A-Z]{2,4}` em `PADRAO_ER_01`. Na ficha `ER01`, troque
+   `definicoes=(DEF_ID,)` por uma definição própria com a nova ER formal:
+   `("ID", "(SEN | ATU) - [A-Z][A-Z]([A-Z] | ε)([A-Z] | ε) - [0-9][0-9][0-9][0-9]")`.
+   Não altere `DEF_ID`, que também é usada pela ER-05.
+2. Rode `python -m pytest`. Falham exatamente os pontos afetados: o caso `SEN-ABCD-1234` (agora aceito),
+   o `.jff` antigo e a mensagem de diagnóstico "mais de 3 letras". Se a ER formal não acompanhar o
+   código, o teste de equivalência também falha e mostra uma cadeia que distingue as duas.
+3. Em `tests/casos_teste.py`, transforme o caso em `aceita("SEN-ABCD-1234", ...)`; em
+   `src/diagnostico.py` (`_causa_id`), troque `{4,}` por `{5,}` e o texto para "máximo 4" (e o trecho
+   esperado em `tests/test_aplicacao.py`). Rode `python scripts/gerar_automatos.py` para gerar o novo
+   `.jff` e o diagrama, e `python -m pytest` de novo.
+
+## Como o código funciona (para estudar)
+
+| Arquivo | O que explicar |
+| :-- | :-- |
+| `src/expressoes.py` | Os cinco padrões (`PADRAO_ER_0X`) e as fichas. A ER formal fica em `definicoes` + `formal`; `formal_para_python` traduz a ER formal para o Python só para os testes compararem. |
+| `src/afn.py` | A classe `AFNe`: `fecho_epsilon` (estados alcançáveis só por ε), `passo` (lê um símbolo e aplica o fecho), `simular` (guarda o conjunto de estados após cada símbolo), `contraexemplo` (prova de equivalência) e `linguagem_infinita`. |
+| `src/construtor_afn.py` | Lê o padrão (descida recursiva) e aplica Thompson: símbolo = uma transição; concatenação = encadear; união = ramos abertos e fechados por ε; `?` = desvio ε; `*` = laço ε; `{m,n}` = cópias. Recursos não regulares (`\d`, `.`, `^`, `\1`) são rejeitados. |
+| `src/diagnostico.py` | Para um pacote rejeitado: adivinha qual ER ele tentou seguir, explica a causa e usa `simular` para achar a coluna onde o conjunto de estados ficou vazio. |
+| `src/relatorio.py` e `src/auditor.py` | Leitura do arquivo, extração de campos, estatísticas, exportação, menu e linha de comando. |
+
+Ideia central para a banca: **o AFNε não foi desenhado à mão**. Ele é construído a partir do padrão
+do código pela construção de Thompson, exportado para o JFLAP e comparado com a ER formal por um
+algoritmo que percorre todos os pares de estados possíveis. Por isso as cinco representações exigidas
+(ER formal, slides, código, testes e AFNε) descrevem a mesma linguagem.

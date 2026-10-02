@@ -10,6 +10,8 @@ o AFNε devem representar A MESMA linguagem.
 """
 
 import random
+import re
+import string
 from pathlib import Path
 
 import pytest
@@ -77,6 +79,16 @@ def test_arquivo_jflap_compativel_com_o_simulador_do_jflap(er):
     jff = carregar_jff(PASTA_JFLAP / f"{er.codigo}.jff")
     assert "[" not in jff.alfabeto()
     assert len(jff.finais) >= 1
+
+
+@POR_ER
+def test_alfabeto_da_ficha_e_o_alfabeto_do_afn(er):
+    """O Σ declarado na ficha tem exatamente os símbolos usados pelo AFNε."""
+    alfabeto = AFNS[er.codigo].alfabeto()
+    declarado = int(re.search(r"\(([0-9]+) símbolos\)", er.alfabeto).group(1))
+    assert len(alfabeto) == declarado
+    for simbolo in alfabeto - set(string.ascii_letters + string.digits):
+        assert (simbolo if simbolo != " " else "⎵") in er.alfabeto
 
 
 @POR_ER

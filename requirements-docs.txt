@@ -1,0 +1,5 @@
+# Necessário apenas para regenerar os documentos e diagramas (scripts/)
+-r requirements.txt
+markdown>=3.5
+python-pptx>=1.0
+pillow>=10.0

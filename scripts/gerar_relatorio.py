@@ -26,7 +26,7 @@ sys.path[:0] = [str(RAIZ / "src"), str(RAIZ / "tests"), str(RAIZ / "scripts")]
 
 import auditor  # noqa: E402
 from casos_teste import CASOS  # noqa: E402
-from conteudo_fichas import EQUIVALENCIAS, LIMITES  # noqa: E402
+from conteudo_fichas import EQUIVALENCIAS, FONTES, LIMITES  # noqa: E402
 from diagnostico import AUTOMATOS  # noqa: E402
 from expressoes import EXPRESSOES  # noqa: E402
 from pdf import html_para_pdf, markdown_para_html  # noqa: E402
@@ -39,6 +39,15 @@ INTEGRANTES = ["Augusto Rodrigues", "Caue Jadão", "César Augusto"]
 def celula(texto: str, codigo: bool = True) -> str:
     texto = texto.replace("|", "\\|")
     return f"`{texto}`" if codigo and texto != "—" else texto
+
+
+def exibir_cadeia(cadeia: str) -> str:
+    """Cadeia de teste para tabelas: ε para a vazia e ⎵ para espaços no fim
+    (que seriam invisíveis na tabela)."""
+    if not cadeia:
+        return "ε (cadeia vazia)"
+    sem_espacos = cadeia.rstrip(" ")
+    return sem_espacos + "⎵" * (len(cadeia) - len(sem_espacos))
 
 
 def capturar(funcao, *args) -> str:
@@ -191,8 +200,7 @@ def ficha(er) -> str:
     )
     testes = []
     for i, caso in enumerate(casos, start=1):
-        cadeia = f"`{caso.cadeia}`" if caso.cadeia.strip() == caso.cadeia and caso.cadeia else (
-            "ε (cadeia vazia)" if not caso.cadeia else f"`{caso.cadeia.replace(' ', '⎵')}`")
+        cadeia = f"`{exibir_cadeia(caso.cadeia)}`" if caso.cadeia else exibir_cadeia(caso.cadeia)
         resultado = "✅ aceita" if caso.aceita else "❌ rejeitada"
         limite = " **(caso-limite)**" if caso.limite else ""
         testes.append(f"| {i} | {cadeia} | {resultado} | {caso.motivo}{limite} |")
@@ -203,6 +211,7 @@ def ficha(er) -> str:
                     "A numeração dos estados é a do autômato completo." if partes > 1 else "")
     infinita = "infinita" if afn.linguagem_infinita() else "finita"
     limites = "\n".join(f"- {texto}" for texto in LIMITES[er.codigo])
+    fonte = f"\n\n**Fonte.** {FONTES[er.codigo]}" if er.codigo in FONTES else ""
     aceitas = sum(c.aceita for c in casos)
     return f"""
 <div class="quebra"></div>
@@ -232,7 +241,7 @@ def ficha(er) -> str:
 
 | No código | Na ER formal | Explicação |
 | :-- | :-- | :-- |
-{equivalencias}
+{equivalencias}{fonte}
 
 **AFNε** — construído pela construção de Thompson a partir do padrão do código:
 **{afn.n_estados} estados** (inicial `q0`, final `q{min(afn.finais)}`), **{len(afn.transicoes)} transições**,
@@ -286,10 +295,20 @@ linguagem**. Em vez de conferir isso manualmente, o projeto verifica a regra por
 As cinco linguagens são **disjuntas** (a interseção de cada par de AFNε é vazia, também verificada
 por busca no produto). Por isso cada pacote válido pertence a exatamente uma categoria.
 
-**Observação sobre o JFLAP 7.1.** Durante a verificação descobrimos que o simulador do JFLAP 7.1
-interpreta qualquer rótulo que contenha `[` como um intervalo no estilo `[a-z]` e lança uma exceção
-quando o rótulo é apenas `[`. Por isso a severidade do log é escrita sem colchetes (`INFO`, não
-`[INFO]`): assim o `.jff` reconhece exatamente a mesma linguagem do código, sem símbolos substitutos.
+**Observações sobre o JFLAP 7.1.** A execução no motor do JFLAP revelou dois comportamentos que
+orientaram o formato dos arquivos:
+
+- O simulador interpreta qualquer rótulo que contenha `[` como um intervalo no estilo `[a-z]` e lança
+  uma exceção quando o rótulo é apenas `[`. Por isso a severidade do log é escrita sem colchetes
+  (`INFO`, não `[INFO]`): o `.jff` reconhece exatamente a mesma linguagem do código, sem símbolos
+  substitutos.
+- Rótulos de intervalo como `[A-Z]` deixariam o desenho mais limpo, mas, depois de uma transição desse
+  tipo, o simulador do JFLAP 7.1 **não aplica o fecho-ε**: testamos uma versão com intervalos e ela
+  rejeitou 35 das 40 cadeias que deveriam ser aceitas (por exemplo, todo ID com modelo de 2 letras,
+  que depende do desvio ε da terceira letra). Por isso os `.jff` usam uma transição por símbolo, o
+  formato básico que funciona em qualquer versão do JFLAP e em todas as suas operações.
+
+A pasta `automatos/jflap/imagens/` mostra cada `.jff` desenhado pelo próprio componente gráfico do JFLAP.
 """
 
 
@@ -431,8 +450,12 @@ explicam e conseguem modificar o código, as expressões regulares e os autômat
 - SIPSER, M. *Introdução à Teoria da Computação*. 2. ed. São Paulo: Cengage Learning, 2007.
 - THOMPSON, K. Programming Techniques: Regular expression search algorithm. *Communications of the ACM*, v. 11, n. 6, p. 419–422, 1968.
 - AHO, A. V.; LAM, M. S.; SETHI, R.; ULLMAN, J. D. *Compiladores: princípios, técnicas e ferramentas*. 2. ed. São Paulo: Pearson, 2008 (definições regulares, seção 3.3).
+- GOYVAERTS, J.; LEVITHAN, S. *Regular Expressions Cookbook*. 2. ed. Sebastopol: O'Reilly, 2012 (receitas de validação de datas e de endereços IPv4).
 - PYTHON SOFTWARE FOUNDATION. *re — Regular expression operations*. Disponível em: <https://docs.python.org/3/library/re.html>.
 - RODGER, S. H. *JFLAP 7.1*. Duke University. Disponível em: <https://www.jflap.org>.
+- GANSNER, E. R.; NORTH, S. C. An open graph visualization system and its applications to software engineering. *Software: Practice and Experience*, v. 30, n. 11, p. 1203–1233, 2000 (Graphviz, usado nos diagramas). Disponível em: <https://graphviz.org>.
+- PYTEST DEVELOPMENT TEAM. *pytest*. Disponível em: <https://docs.pytest.org>.
+- Bibliotecas usadas só para gerar os documentos: *Python-Markdown* (<https://python-markdown.github.io>), *python-pptx* (<https://python-pptx.readthedocs.io>) e *Pillow* (<https://python-pillow.org>).
 - ISO 8601-1:2019 — *Date and time — Representations for information interchange*.
 - POSTEL, J. *RFC 791 — Internet Protocol*, 1981; FULLER, V.; LI, T. *RFC 4632 — Classless Inter-domain Routing (CIDR)*, 2006.
 """

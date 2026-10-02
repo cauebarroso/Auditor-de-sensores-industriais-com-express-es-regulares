@@ -1,10 +1,12 @@
 # Execução dos AFNε no motor do JFLAP 7.1
 
-Gerado por `scripts/verificar_jflap.py`: cada `.jff` foi carregado pelo próprio JFLAP (`file.XMLCodec`) e simulado com `FSAStepWithClosureSimulator`, o mesmo simulador usado em *Input > Multiple Run*.
+Gerado por `scripts/verificar_jflap.py`: cada `.jff` foi carregado pelo próprio JFLAP (`file.XMLCodec`) e simulado com `FSAStepWithClosureSimulator`, o simulador usado em *Input › Multiple Run*. As imagens em `imagens/` foram desenhadas pelo componente gráfico do JFLAP (`gui.viewer.AutomatonPane`).
 
 **Resultado: 80/80 cadeias com o resultado esperado.**
 
 ## ER-01 — ID do Dispositivo
+
+![ER-01 no JFLAP](imagens/ER-01.png)
 
 | # | Cadeia | Esperado | JFLAP | Confere |
 | --: | :-- | :-: | :-: | :-: |
@@ -27,6 +29,8 @@ Gerado por `scripts/verificar_jflap.py`: cada `.jff` foi carregado pelo próprio
 
 ## ER-02 — Telemetria (medição física)
 
+![ER-02 no JFLAP](imagens/ER-02.png)
+
 | # | Cadeia | Esperado | JFLAP | Confere |
 | --: | :-- | :-: | :-: | :-: |
 | 1 | `SEN-TM-0001:TEMP=25.5C` | ACEITA | ACEITA | ✅ |
@@ -47,6 +51,8 @@ Gerado por `scripts/verificar_jflap.py`: cada `.jff` foi carregado pelo próprio
 | 16 | `SEN-TM-0001:TEMP=25F` | REJEITA | REJEITA | ✅ |
 
 ## ER-03 — Comando de Controle
+
+![ER-03 no JFLAP](imagens/ER-03.png)
 
 | # | Cadeia | Esperado | JFLAP | Confere |
 | --: | :-- | :-: | :-: | :-: |
@@ -69,6 +75,8 @@ Gerado por `scripts/verificar_jflap.py`: cada `.jff` foi carregado pelo próprio
 
 ## ER-04 — Rota de Rede IPv4/CIDR
 
+![ER-04 no JFLAP](imagens/ER-04.png)
+
 | # | Cadeia | Esperado | JFLAP | Confere |
 | --: | :-- | :-: | :-: | :-: |
 | 1 | `192.168.0.1` | ACEITA | ACEITA | ✅ |
@@ -89,6 +97,8 @@ Gerado por `scripts/verificar_jflap.py`: cada `.jff` foi carregado pelo próprio
 | 16 | ε (vazia) | REJEITA | REJEITA | ✅ |
 
 ## ER-05 — Alerta de Log (severidade)
+
+![ER-05 no JFLAP](imagens/ER-05.png)
 
 | # | Cadeia | Esperado | JFLAP | Confere |
 | --: | :-- | :-: | :-: | :-: |
